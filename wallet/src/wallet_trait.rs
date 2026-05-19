@@ -95,9 +95,5 @@ pub trait WalletTrait {
     fn get_factory(env: Env) -> Option<Address>;
 
     // upgrade
-    fn upgrade(
-        env: Env,
-        wasm: BytesN<32>,
-        passkey_sig: Option<PasskeySignature>,
-    ) -> Result<(), WalletError>;
+    fn upgrade(env: Env, passkey_sig: Option<PasskeySignature>) -> Result<(), WalletError>;
 }

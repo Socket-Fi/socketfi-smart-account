@@ -532,30 +532,44 @@ impl WalletTrait for Wallet {
     fn get_factory(env: Env) -> Option<Address> {
         read_factory(&env)
     }
+
     // ---------------------------------------------------------------------
-    // contract upgrade
+    // Contract upgrade
     // ---------------------------------------------------------------------
 
-    /// Upgrade the current contract wasm.
+    /// Upgrade the current contract to the latest factory-approved wasm.
     ///
     /// Auth:
     /// - Requires owner authorization through the wallet auth flow.
     ///
     /// Effects:
-    /// - Replaces the currently deployed contract code.
+    /// - Retrieves the approved wallet wasm hash from the factory.
+    /// - Replaces the currently deployed contract code with that version.
     ///
     /// Notes:
-    /// - Payload includes wasm hash and nonce to prevent replay.
-    fn upgrade(
-        env: Env,
-        wasm: BytesN<32>,
-        passkey_sig: Option<PasskeySignature>,
-    ) -> Result<(), WalletError> {
+    /// - Authorization payload is bound to the target wasm hash.
+    /// - Replay protection is enforced through the wallet authorization flow.
+    fn upgrade(env: Env, passkey_sig: Option<PasskeySignature>) -> Result<(), WalletError> {
+        // Load the factory address that controls the approved wallet wasm version.
+        let factory = read_factory(&env).ok_or(WalletError::FactoryNotFound)?;
+
+        // Fetch the currently approved wallet wasm hash from the factory.
+        let wasm: BytesN<32> = env
+            .invoke_contract::<Option<BytesN<32>>>(
+                &factory,
+                &Symbol::new(&env, "get_wallet_version"),
+                vec![&env],
+            )
+            .ok_or(WalletError::WalletVersionNotFound)?;
+
+        // Bind owner authorization to this specific upgrade action and wasm hash.
         let args: Vec<Val> = vec![&env, wasm.clone().into_val(&env)];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "upgrade"), args);
 
         __owner_require_auth(env.clone(), payload, passkey_sig)?;
-        env.deployer().update_current_contract_wasm(wasm.clone());
+
+        // Upgrade this wallet to the factory-approved wasm.
+        env.deployer().update_current_contract_wasm(wasm);
 
         Ok(())
     }
