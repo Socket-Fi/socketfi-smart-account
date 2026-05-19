@@ -1,15 +1,18 @@
 use crate::{
     contract_trait::FactoryTrait,
-    data::BlsKeyWithProof,
-    errors::FactoryError,
-    wallet_factory::{extract_bls_keys, read_pop_salt, write_create_wallet},
+    data::{BlsKeyWithPoP, PasskeyWithPoP},
+    wallet_factory::{
+        __verify_each_bls_key, __verify_passkey_pop, extract_bls_keys, read_creation_pop_challenge,
+        write_create_wallet, write_creation_nonce_used, write_rpid_hash,
+    },
 };
 use socketfi_access::access::{
     authenticate_admin, has_admin, read_admin, read_fee_manager, read_registry, write_admin,
     write_fee_manager, write_registry, write_social_router,
 };
 use socketfi_shared::events;
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+use socketfi_webauthn::wallet_error::WalletError;
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Symbol, Vec};
 use upgrade::{
     cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
     get_wallet_version as read_wallet_version, init_wallet_version, upgrade_add_voter,
@@ -48,6 +51,7 @@ impl FactoryTrait for FactoryContract {
         registry: Address,
         social_router: Address,
         fee_manager: Address,
+        rpid: String,
         wasm: BytesN<32>,
     ) -> Result<(), UpgradeError> {
         if has_admin(&e) {
@@ -58,6 +62,7 @@ impl FactoryTrait for FactoryContract {
         write_registry(&e, &registry);
         write_social_router(&e, &social_router);
         write_fee_manager(&e, &fee_manager);
+        write_rpid_hash(&e, &rpid);
 
         // Store the initial wallet version approved for deployment.
         init_wallet_version(&e, &wasm)?;
@@ -72,21 +77,38 @@ impl FactoryTrait for FactoryContract {
 
     /// Deploy and initialize a new wallet instance.
     ///
+    /// Verifies:
+    /// - passkey proof over the wallet-creation challenge
+    /// - each BLS public key proof over the same challenge
+    /// - nonce freshness through the creation challenge flow
+    ///
     /// Effects:
-    /// - Creates a new wallet using the currently approved wallet version.
-    /// - Passes wallet auth material into the deployment flow.
-    /// - Emits a wallet creation event after successful deployment.
+    /// - deploys wallet using the current approved wallet wasm hash
+    /// - stores the nonce as used
+    /// - emits wallet creation event
     fn create_wallet(
         e: Env,
-        passkey: BytesN<77>,
-        bls_keys_pop: Vec<BlsKeyWithProof>,
-    ) -> Result<Address, FactoryError> {
-        let wallet_address = write_create_wallet(&e, &passkey, bls_keys_pop.clone())?;
+        passkey_pop: PasskeyWithPoP,
+        bls_keys_pop: Vec<BlsKeyWithPoP>,
+        nonce: BytesN<32>,
+        network: Symbol,
+    ) -> Result<Address, WalletError> {
+        let challenge = read_creation_pop_challenge(&e, &nonce, &network)?;
+        __verify_passkey_pop(&e, challenge.clone(), passkey_pop.clone())?;
+
+        for bls_key_pop in bls_keys_pop.iter() {
+            __verify_each_bls_key(&e, challenge.clone(), bls_key_pop)?;
+        }
+        let bls_keys = extract_bls_keys(&e, bls_keys_pop.clone());
+        let wallet_address =
+            write_create_wallet(&e, &passkey_pop.key, bls_keys.clone(), challenge)?;
+
+        write_creation_nonce_used(&e, &nonce);
 
         events::WalletCreationEvent {
             wallet: wallet_address.clone(),
-            passkey,
-            bls_keys: extract_bls_keys(&e, bls_keys_pop),
+            passkey: passkey_pop.key,
+            bls_keys: bls_keys,
         }
         .publish(&e);
 
@@ -103,16 +125,17 @@ impl FactoryTrait for FactoryContract {
         read_wallet_version(&e)
     }
 
-    // Returns the canonical proof-of-possession challenge salt used during
-    // wallet creation. The salt is derived from the passkey and the canonical
-    // aggregate BLS public key, ensuring all signer nodes compute and sign the
-    // exact same deterministic challenge off-chain.
-    fn get_pop_salt(
+    /// Returns the deterministic wallet-creation proof challenge.
+    ///
+    /// The challenge is derived from the configured RP ID hash, network, and nonce.
+    /// It is used off-chain by the passkey and BLS signers so all parties sign the
+    /// same wallet-creation intent.
+    fn get_pop_challenge(
         e: Env,
-        passkey: BytesN<77>,
-        bls_keys: Vec<BytesN<96>>,
-    ) -> Result<BytesN<32>, FactoryError> {
-        read_pop_salt(&e, &passkey, bls_keys)
+        nonce: BytesN<32>,
+        network: Symbol,
+    ) -> Result<BytesN<32>, WalletError> {
+        read_creation_pop_challenge(&e, &nonce, &network)
     }
 
     /// Return the current admin address.

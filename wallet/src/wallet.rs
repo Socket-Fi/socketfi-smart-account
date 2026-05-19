@@ -1,10 +1,9 @@
 use crate::{
-    bls_access::{is_initialized, read_owner, read_passkey, write_owner},
+    auth::{__owner_require_auth, compute_tx_nonce, read_nonce},
     constructor::init_constructor,
-    data::AccessSettings,
-    errors::WalletError,
+    data::{AccessSettings, PasskeySignature},
     invocation_auth::{dapp_invoke_auth, fee_manager_deep_auth},
-    wallet_bls_auth::{compute_tx_nonce, owner_require_auth, read_nonce},
+    state::{is_initialized, read_owner, read_passkey, write_owner},
     wallet_trait::WalletTrait,
 };
 use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
@@ -15,6 +14,7 @@ use socketfi_shared::{
         spend_asset, take_asset, write_approve, write_default_spend_limit, write_limit,
     },
 };
+use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
     contract, contractimpl, vec, Address, BytesN, Env, IntoVal, Map, String, Symbol, Val, Vec,
 };
@@ -40,7 +40,8 @@ impl WalletTrait for Wallet {
     /// - Reverts if initialization was already completed.
     fn __constructor(
         env: Env,
-        passkey: BytesN<77>,
+        passkey: BytesN<65>,
+        rpid_hash: BytesN<32>,
         bls_keys: Vec<BytesN<96>>,
         registry: Address,
         social_router: Address,
@@ -54,6 +55,7 @@ impl WalletTrait for Wallet {
         init_constructor(
             env,
             passkey,
+            rpid_hash,
             bls_keys,
             registry,
             social_router,
@@ -81,12 +83,12 @@ impl WalletTrait for Wallet {
     fn set_external_wallet(
         env: Env,
         external_wallet: Address,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![&env, external_wallet.clone().to_val()];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "set_external_wallet"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
         write_owner(&env, &external_wallet);
 
         Ok(())
@@ -108,12 +110,12 @@ impl WalletTrait for Wallet {
     fn update_default_limit(
         env: Env,
         limit: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![&env, limit.into_val(&env)];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "update_default_limit"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
 
         if limit < 0 {
             return Err(WalletError::InvalidLimit);
@@ -139,12 +141,12 @@ impl WalletTrait for Wallet {
         env: Env,
         asset: Address,
         limit: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![&env, asset.clone().into_val(&env), limit.into_val(&env)];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "set_limit"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
 
         if limit < 0 {
             return Err(WalletError::InvalidLimit);
@@ -169,14 +171,14 @@ impl WalletTrait for Wallet {
     /// Notes:
     /// - Rejects non-positive amounts.
     /// -`take_asset` transfers funds into the current contract context.
-    fn deposit(e: Env, from: Address, asset: Address, amount: i128) -> Result<(), WalletError> {
+    fn deposit(env: Env, from: Address, asset: Address, amount: i128) -> Result<(), WalletError> {
         from.require_auth();
 
         if amount <= 0 {
             return Err(WalletError::InvalidAmount);
         }
 
-        take_asset(&e, &from, &asset, amount);
+        take_asset(&env, &from, &asset, amount);
         Ok(())
     }
 
@@ -197,7 +199,7 @@ impl WalletTrait for Wallet {
         to: Address,
         asset: Address,
         amount: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         if amount <= 0 {
             return Err(WalletError::InvalidAmount);
@@ -213,11 +215,11 @@ impl WalletTrait for Wallet {
             asset.clone().into_val(&env),
             amount.into_val(&env),
         ];
-        let payload = compute_tx_nonce(&env, String::from_str(&env, "withdraw"), args);
+        let challenge = compute_tx_nonce(&env, String::from_str(&env, "withdraw"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature.clone())?;
+        __owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
-        if let Some(_) = tx_signature {
+        if let Some(_) = passkey_sig {
             let fee_manager = read_fee_manager(&env).unwrap();
 
             let args: Vec<Val> = vec![
@@ -272,7 +274,7 @@ impl WalletTrait for Wallet {
         asset: Address,
         spender: Address,
         amount: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![
             &env,
@@ -282,7 +284,7 @@ impl WalletTrait for Wallet {
         ];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "approve"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
 
         if amount < 0 {
             return Err(WalletError::InvalidAmount);
@@ -346,7 +348,7 @@ impl WalletTrait for Wallet {
         func: Symbol,
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let mut a_args: Vec<Val> = vec![
             &env,
@@ -365,7 +367,7 @@ impl WalletTrait for Wallet {
 
         let payload = compute_tx_nonce(&env, String::from_str(&env, "dapp_invoker"), a_args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
 
         let _res: Val = env.invoke_contract(&contract_id, &func, args.unwrap_or(vec![&env]));
         Ok(())
@@ -399,7 +401,7 @@ impl WalletTrait for Wallet {
     ///
     /// Notes:
     /// - Read-only helper.
-    fn get_passkey(env: Env) -> Option<BytesN<77>> {
+    fn get_passkey(env: Env) -> Option<BytesN<65>> {
         read_passkey(&env)
     }
 
@@ -519,12 +521,12 @@ impl WalletTrait for Wallet {
     fn upgrade(
         env: Env,
         wasm: BytesN<32>,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![&env, wasm.clone().into_val(&env)];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "upgrade"), args);
 
-        owner_require_auth(env.clone(), payload, tx_signature)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig)?;
         env.deployer().update_current_contract_wasm(wasm.clone());
 
         Ok(())

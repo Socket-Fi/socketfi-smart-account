@@ -1,11 +1,10 @@
+use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
     vec, Address, Env, FromVal, IntoVal, Map, String, Symbol, Val, Vec,
 };
 
 use socketfi_access::access::read_fee_manager;
-
-use crate::errors::WalletError;
 
 /// Build and register deep auth entries for downstream contract invocations.
 ///

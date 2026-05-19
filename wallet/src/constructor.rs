@@ -1,10 +1,10 @@
 use socketfi_shared::tokens::{write_allowance_expiration, write_default_spend_limit};
+use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Vec};
 
 use crate::{
-    bls_access::{write_agg_bls_key, write_passkey},
-    errors::WalletError,
-    wallet_bls_auth::write_nonce,
+    auth::write_nonce,
+    state::{write_agg_bls_key, write_passkey, write_rpid_hash},
 };
 use socketfi_access::access::{
     write_factory, write_fee_manager, write_registry, write_social_router,
@@ -18,7 +18,8 @@ use socketfi_access::access::{
 /// - Returns an error only if aggregated BLS key setup fails.
 pub fn init_constructor(
     env: Env,
-    passkey: BytesN<77>,
+    passkey: BytesN<65>,
+    rpid_hash: BytesN<32>,
     bls_keys: Vec<BytesN<96>>,
     registry: Address,
     social_router: Address,
@@ -27,6 +28,9 @@ pub fn init_constructor(
 ) -> Result<(), WalletError> {
     // Store the passkey payload used by the wallet auth model.
     write_passkey(&env, passkey);
+
+    //Store the configured rp_id hash for the passkey
+    write_rpid_hash(&env, &rpid_hash);
 
     // Aggregate and store the BLS public keys used for signature verification.
     write_agg_bls_key(&env, bls_keys)?;

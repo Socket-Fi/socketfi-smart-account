@@ -1,7 +1,8 @@
-use soroban_sdk::{Address, BytesN, Env, String, Vec};
+use socketfi_webauthn::wallet_error::WalletError;
+use soroban_sdk::{Address, BytesN, Env, String, Symbol, Vec};
 use upgrade::errors::UpgradeError;
 
-use crate::{data::BlsKeyWithProof, errors::FactoryError};
+use crate::data::{BlsKeyWithPoP, PasskeyWithPoP};
 
 /// Public interface for the factory contract.
 ///
@@ -21,6 +22,7 @@ pub trait FactoryTrait {
         registry: Address,
         social_router: Address,
         fee_manager: Address,
+        rpid: String,
         wasm: BytesN<32>,
     ) -> Result<(), UpgradeError>;
 
@@ -33,9 +35,11 @@ pub trait FactoryTrait {
     /// - Returns deployed wallet address.
     fn create_wallet(
         e: Env,
-        passkey: BytesN<77>,
-        bls_keys_pop: Vec<BlsKeyWithProof>,
-    ) -> Result<Address, FactoryError>;
+        passkey_pop: PasskeyWithPoP,
+        bls_keys_pop: Vec<BlsKeyWithPoP>,
+        nonce: BytesN<32>,
+        network: Symbol,
+    ) -> Result<Address, WalletError>;
 
     // read-only getters
 
@@ -43,11 +47,11 @@ pub trait FactoryTrait {
     fn get_wallet_version(e: Env) -> Option<BytesN<32>>;
 
     ///Canonical proof-of-possession challenge salt
-    fn get_pop_salt(
+    fn get_pop_challenge(
         e: Env,
-        passkey: BytesN<77>,
-        bls_keys: Vec<BytesN<96>>,
-    ) -> Result<BytesN<32>, FactoryError>;
+        nonce: BytesN<32>,
+        network: Symbol,
+    ) -> Result<BytesN<32>, WalletError>;
 
     /// Get admin address.
     fn get_admin(e: Env) -> Option<Address>;

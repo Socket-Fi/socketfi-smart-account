@@ -53,7 +53,7 @@ Initializes the wallet instance.
 
 **Parameters:**
 
-- `passkey: BytesN<77>`
+- `passkey: BytesN<65>`
 - `bls_keys: Vec<BytesN<96>>`
 
 **Notes:**

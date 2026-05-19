@@ -1,10 +1,17 @@
-use soroban_sdk::{contracttype, Address};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN};
 
 #[derive(Clone)]
 #[contracttype]
 pub struct AccessSettings {
     pub default_allowance: i128,
     pub g_account: Option<Address>,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct PasskeySignature {
+    pub signature: BytesN<64>,
+    pub client_data_json: Bytes,
+    pub authenticator_data: Bytes,
 }
 
 #[derive(Clone)]
@@ -15,4 +22,6 @@ pub enum DataKey {
     AggregatedBlsKey,
     Passkey,
     Nonce,
+    RpidHash,
+    RPID,
 }

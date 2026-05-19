@@ -1,12 +1,14 @@
+use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Val, Vec};
 
-use crate::{data::AccessSettings, errors::WalletError};
+use crate::data::{AccessSettings, PasskeySignature};
 
 pub trait WalletTrait {
     // initialization
     fn __constructor(
         env: Env,
-        passkey: BytesN<77>,
+        passkey: BytesN<65>,
+        rpid_hash: BytesN<32>,
         bls_keys: Vec<BytesN<96>>,
         registry: Address,
         fee_manager: Address,
@@ -18,31 +20,39 @@ pub trait WalletTrait {
     fn set_external_wallet(
         env: Env,
         external_wallet: Address,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     fn update_default_limit(
         env: Env,
         limit: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     fn set_limit(
         env: Env,
         asset: Address,
         limit: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     // asset actions
     fn deposit(env: Env, from: Address, asset: Address, amount: i128) -> Result<(), WalletError>;
+
+    // fn withdraw(
+    //     env: Env,
+    //     to: Address,
+    //     asset: Address,
+    //     amount: i128,
+    //     passkey_sig: Option<BytesN<64>>,
+    // ) -> Result<(), WalletError>;
 
     fn withdraw(
         env: Env,
         to: Address,
         asset: Address,
         amount: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     fn approve(
@@ -50,7 +60,7 @@ pub trait WalletTrait {
         asset: Address,
         spender: Address,
         amount: i128,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     fn spend(
@@ -68,12 +78,12 @@ pub trait WalletTrait {
         func: Symbol,
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 
     // views
     fn get_account_parameters(env: Env) -> AccessSettings;
-    fn get_passkey(env: Env) -> Option<BytesN<77>>;
+    fn get_passkey(env: Env) -> Option<BytesN<65>>;
     fn get_allowance(env: Env, asset: Address, spender: Address) -> i128;
     fn get_nonce(env: Env) -> u64;
     fn get_tx_payload(env: Env, func: String, args: Vec<Val>) -> BytesN<32>;
@@ -88,6 +98,6 @@ pub trait WalletTrait {
     fn upgrade(
         env: Env,
         wasm: BytesN<32>,
-        tx_signature: Option<BytesN<192>>,
+        passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError>;
 }

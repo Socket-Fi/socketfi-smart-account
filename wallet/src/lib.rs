@@ -1,10 +1,9 @@
 #![no_std]
 
-mod bls_access;
+mod auth;
 mod constructor;
 mod data;
-mod errors;
 mod invocation_auth;
+mod state;
 mod wallet;
-mod wallet_bls_auth;
 mod wallet_trait;

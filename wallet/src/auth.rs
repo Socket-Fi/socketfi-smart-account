@@ -1,3 +1,4 @@
+use socketfi_webauthn::{__validate_passkey_assertion_data, wallet_error::WalletError};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
@@ -6,9 +7,9 @@ use soroban_sdk::{
 };
 
 use crate::{
-    bls_access::{read_aggregated_bls_key, read_owner},
-    data::DataKey,
-    errors::WalletError,
+    data::{DataKey, PasskeySignature},
+    state::read_passkey,
+    state::{read_agg_bls_key, read_owner, read_rpid_hash},
 };
 use socketfi_shared::{bls::g1_group_gen_point, constants::DST};
 
@@ -17,8 +18,8 @@ use socketfi_shared::{bls::g1_group_gen_point, constants::DST};
 /// Notes:
 /// - Converts the shared BLS DST constant into `Bytes` for hashing.
 /// - Used during message hashing in signature verification.
-pub fn read_dst_bytes(env: &Env) -> Bytes {
-    Bytes::from_slice(&env, DST.as_bytes())
+fn read_dst_bytes(e: &Env) -> Bytes {
+    Bytes::from_slice(&e, DST.as_bytes())
 }
 
 /// Read the current replay-protection nonce from instance storage.
@@ -26,16 +27,16 @@ pub fn read_dst_bytes(env: &Env) -> Bytes {
 /// Notes:
 /// - Returns the stored nonce when present.
 /// - Returns `0` if nonce has not yet been initialized.
-pub fn read_nonce(e: &Env) -> u64 {
-    e.storage().instance().get(&DataKey::Nonce).unwrap_or(0)
+pub fn read_nonce(env: &Env) -> u64 {
+    env.storage().instance().get(&DataKey::Nonce).unwrap_or(0)
 }
 
 /// Write the replay-protection nonce to instance storage.
 ///
 /// Notes:
 /// - Replaces any previously stored nonce value.
-pub fn write_nonce(e: &Env, nonce: u64) {
-    e.storage().instance().set(&DataKey::Nonce, &nonce);
+pub fn write_nonce(env: &Env, nonce: u64) {
+    env.storage().instance().set(&DataKey::Nonce, &nonce);
 }
 
 /// Increment the replay-protection nonce by one.
@@ -43,10 +44,10 @@ pub fn write_nonce(e: &Env, nonce: u64) {
 /// Notes:
 /// - Reads the current nonce, increments it, and stores the new value.
 /// - Panics if `checked_add(1)` overflows.
-pub fn update_nonce(e: &Env) {
-    let nonce = read_nonce(e);
+pub fn update_nonce(env: &Env) {
+    let nonce = read_nonce(env);
     let n = nonce.checked_add(1).expect("invalid nonce");
-    e.storage().instance().set(&DataKey::Nonce, &n);
+    env.storage().instance().set(&DataKey::Nonce, &n);
 }
 
 /// Compute the wallet authorization payload hash.
@@ -74,6 +75,44 @@ pub fn compute_tx_nonce(env: &Env, func: String, args: Vec<Val>) -> BytesN<32> {
     BytesN::from(env.crypto().sha256(&payload))
 }
 
+pub fn __verify_passkey(
+    env: &Env,
+    challenge: BytesN<32>,
+    passkey_sig: PasskeySignature,
+) -> Result<(), WalletError> {
+    let expected_rpid_hash = read_rpid_hash(env);
+
+    __validate_passkey_assertion_data(
+        env,
+        challenge,
+        expected_rpid_hash,
+        passkey_sig.clone().authenticator_data,
+        passkey_sig.clone().client_data_json,
+    )?;
+
+    let client_data_hash: BytesN<32> = env.crypto().sha256(&passkey_sig.client_data_json).into();
+
+    let mut signed_payload = Bytes::new(&env);
+
+    // authenticatorData
+    signed_payload.append(&passkey_sig.authenticator_data);
+
+    // sha256(clientDataJSON)
+    let mut i = 0;
+    while i < 32 {
+        signed_payload.push_back(client_data_hash.get_unchecked(i));
+        i += 1;
+    }
+    let digest = env.crypto().sha256(&signed_payload);
+    let passkey = read_passkey(env).unwrap();
+    env.crypto()
+        .secp256r1_verify(&passkey, &digest, &passkey_sig.signature);
+
+    update_nonce(env);
+    Ok(())
+}
+
+
 /// Verify a BLS signature against the aggregated public key.
 ///
 /// Notes:
@@ -84,7 +123,7 @@ pub fn compute_tx_nonce(env: &Env, func: String, args: Vec<Val>) -> BytesN<32> {
 /// - Updates the nonce only after a successful verification.
 /// - Current implementation assumes the aggregated public key exists and
 ///   uses `unwrap()`, so missing key material would panic.
-pub fn check_auth(
+pub fn __verify_bls_key(
     env: &Env,
     payload: BytesN<32>,
     tx_signature: BytesN<192>,
@@ -93,7 +132,7 @@ pub fn check_auth(
     let bls = env.crypto().bls12_381();
 
     // Read aggregated public key and domain separation tag used for verification.
-    let agg_pk: BytesN<96> = read_aggregated_bls_key(&env).unwrap();
+    let agg_pk: BytesN<96> = read_agg_bls_key(&env).unwrap();
     let dst: Bytes = read_dst_bytes(&env);
 
     // Load the negative G1 generator used in the pairing equation.
@@ -123,14 +162,14 @@ pub fn check_auth(
 /// - If no signature is provided, the stored owner address must authorize directly.
 /// - Current implementation assumes an owner is configured in the direct auth path
 ///   and uses `unwrap()`, so missing owner state would panic.
-pub fn owner_require_auth(
+pub fn __owner_require_auth(
     env: Env,
-    payload: BytesN<32>,
-    tx_signature: Option<BytesN<192>>,
+    challenge: BytesN<32>,
+    passkey_sig: Option<PasskeySignature>,
 ) -> Result<(), WalletError> {
-    if let Some(signature) = tx_signature {
+    if let Some(signature) = passkey_sig {
         // Signature-based authorization path using aggregated BLS verification.
-        check_auth(&env, payload, signature)?;
+        __verify_passkey(&env, challenge, signature)?;
         // fee_manager_deep_auth()
     } else {
         // Direct owner authorization path using the stored external owner address.
@@ -138,5 +177,14 @@ pub fn owner_require_auth(
         owner.require_auth();
     }
 
+    Ok(())
+}
+
+pub fn __authorize_recovery(
+    env: Env,
+    payload: BytesN<32>,
+    agg_bls_sig: BytesN<192>,
+) -> Result<(), WalletError> {
+    __verify_bls_key(&env, payload, agg_bls_sig)?;
     Ok(())
 }

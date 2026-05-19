@@ -1,6 +1,7 @@
-use soroban_sdk::{crypto::bls12_381::G1Affine, Address, BytesN, Env, Vec};
+use socketfi_webauthn::wallet_error::WalletError;
+use soroban_sdk::{crypto::bls12_381::G1Affine, Address, Bytes, BytesN, Env, Vec};
 
-use crate::{data::DataKey, errors::WalletError};
+use crate::data::DataKey;
 use socketfi_shared::constants::MAX_BLS_KEYS;
 
 /// Check whether the wallet has already been initialized.
@@ -9,9 +10,9 @@ use socketfi_shared::constants::MAX_BLS_KEYS;
 /// - Initialization is inferred from whether the aggregated BLS key
 ///   has been stored in persistent storage.
 /// - Returns `true` once `DataKey::AggregatedBlsKey` exists.
-pub fn is_initialized(e: &Env) -> bool {
+pub fn is_initialized(env: &Env) -> bool {
     let key = DataKey::AggregatedBlsKey;
-    e.storage().persistent().has(&key)
+    env.storage().persistent().has(&key)
 }
 
 /// Read the external owner address from instance storage.
@@ -20,9 +21,9 @@ pub fn is_initialized(e: &Env) -> bool {
 /// - Returns `Some(Address)` if an owner has been set.
 /// - Returns `None` if no owner is currently stored.
 /// - Uses instance storage because owner data is contract instance state.
-pub fn read_owner(e: &Env) -> Option<Address> {
+pub fn read_owner(env: &Env) -> Option<Address> {
     let key = DataKey::Owner;
-    e.storage().instance().get(&key)
+    env.storage().instance().get(&key)
 }
 
 /// Write or replace the external owner address in instance storage.
@@ -30,9 +31,9 @@ pub fn read_owner(e: &Env) -> Option<Address> {
 /// Notes:
 /// - Stores the provided owner address under `DataKey::Owner`.
 /// - Overwrites any previously stored owner value.
-pub fn write_owner(e: &Env, owner: &Address) {
+pub fn write_owner(env: &Env, owner: &Address) {
     let key = DataKey::Owner;
-    e.storage().instance().set(&key, owner);
+    env.storage().instance().set(&key, owner);
 }
 
 /// Aggregate a list of BLS public keys into one aggregated key and store it.
@@ -81,9 +82,23 @@ pub fn write_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), Wal
 /// Notes:
 /// - Returns `Some(BytesN<96>)` if an aggregated key has been stored.
 /// - Returns `None` if the wallet has not yet stored an aggregated key.
-pub fn read_aggregated_bls_key(e: &Env) -> Option<BytesN<96>> {
+pub fn read_agg_bls_key(env: &Env) -> Option<BytesN<96>> {
     let key = DataKey::AggregatedBlsKey;
-    e.storage().persistent().get(&key)
+    env.storage().persistent().get(&key)
+}
+
+pub fn read_rpid_hash(env: &Env) -> BytesN<32> {
+    let default_rpid = Bytes::from_array(&env, b"localhost");
+    let key = DataKey::RpidHash;
+    env.storage()
+        .instance()
+        .get(&key)
+        .unwrap_or(BytesN::from(env.crypto().sha256(&default_rpid)))
+}
+
+pub fn write_rpid_hash(env: &Env, rpid_hash: &BytesN<32>) {
+    let key = DataKey::RpidHash;
+    env.storage().instance().set(&key, rpid_hash);
 }
 
 /// Store the passkey payload in persistent storage.
@@ -91,16 +106,16 @@ pub fn read_aggregated_bls_key(e: &Env) -> Option<BytesN<96>> {
 /// Notes:
 /// - Writes the provided passkey bytes under `DataKey::Passkey`.
 /// - Overwrites any previously stored passkey value.
-pub fn write_passkey(env: &Env, passkey: BytesN<77>) {
+pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
     env.storage().persistent().set(&DataKey::Passkey, &passkey);
 }
 
 /// Read the stored passkey payload from persistent storage.
 ///
 /// Notes:
-/// - Returns `Some(BytesN<77>)` if a passkey has been stored.
+/// - Returns `Some(BytesN<65>)` if a passkey has been stored.
 /// - Returns `None` if no passkey is currently set.
-pub fn read_passkey(e: &Env) -> Option<BytesN<77>> {
+pub fn read_passkey(env: &Env) -> Option<BytesN<65>> {
     let key = DataKey::Passkey;
-    e.storage().persistent().get(&key)
+    env.storage().persistent().get(&key)
 }
