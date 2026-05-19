@@ -22,7 +22,9 @@ pub enum WalletError {
     MissingBlsKeys = 2055,
     NonceAlreadyUsed = 2075,
     RpidNotFound = 2085,
+    FactoryNotFound = 2087,
     InvalidNetwork = 2095,
     InvalidAuthenticatorData = 2105,
     InvalidInvokeArgs = 2115,
+    WalletVersionNotFound=2125
 }
