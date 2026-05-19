@@ -2,7 +2,7 @@ use crate::{
     auth::{__owner_require_auth, compute_tx_nonce, read_nonce},
     constructor::init_constructor,
     data::{AccessSettings, PasskeySignature},
-    invocation_auth::{dapp_invoke_auth, fee_manager_deep_auth},
+    invocation_auth::{__validate_limit, dapp_invoke_auth, fee_manager_deep_auth},
     state::{is_initialized, read_owner, read_passkey, write_owner},
     wallet_trait::WalletTrait,
 };
@@ -337,11 +337,14 @@ impl WalletTrait for Wallet {
     /// - Requires owner authorization through the wallet auth flow.
     ///
     /// Effects:
-    /// - Optionally enforces additional invocation auth rules when applicable.
+    /// - Validates top-level token operations against configured spend limits.
+    /// - Optionally validates and registers deep auth entries.
     /// - Performs an external contract call with the provided function and args.
     ///
     /// Notes:
-    /// - Payload includes contract, function, args, auth payload, and nonce.
+    /// - Payload binds owner authorization to the target contract, function,
+    ///   args, and optional deep auth payload.
+    /// - Deep auth entries are authorized only after owner auth succeeds.
     fn dapp_invoker(
         env: Env,
         contract_id: Address,
@@ -350,6 +353,19 @@ impl WalletTrait for Wallet {
         auth_vec: Option<Vec<Map<String, Val>>>,
         passkey_sig: Option<PasskeySignature>,
     ) -> Result<(), WalletError> {
+        // Validate the top-level call in case the wallet is directly invoking
+        // a gated token operation such as transfer, approve, or burn.
+        if let Some(a) = args.clone() {
+            __validate_limit(&env, contract_id.clone(), func.clone(), a)?;
+        }
+
+        // Build the signed payload from the exact invocation intent.
+        //
+        // This binds the owner authorization to:
+        // - target contract
+        // - target function
+        // - top-level args
+        // - optional deep auth entries
         let mut a_args: Vec<Val> = vec![
             &env,
             contract_id.clone().into_val(&env),
@@ -357,19 +373,31 @@ impl WalletTrait for Wallet {
         ];
 
         if let Some(a) = args.clone() {
-            a_args.push_back(a.into_val(&env))
+            a_args.push_back(a.into_val(&env));
         }
 
-        if let Some(p) = auth_vec {
+        if let Some(p) = auth_vec.clone() {
             a_args.push_back(p.into_val(&env));
-            dapp_invoke_auth(&env, p)?;
         }
 
         let payload = compute_tx_nonce(&env, String::from_str(&env, "dapp_invoker"), a_args);
 
+        // Verify wallet owner/passkey authorization before granting any
+        // current-contract deep auth.
         __owner_require_auth(env.clone(), payload, passkey_sig)?;
 
-        let _res: Val = env.invoke_contract(&contract_id, &func, args.unwrap_or(vec![&env]));
+        // Validate and register deep auth entries after owner auth succeeds.
+        //
+        // dapp_invoke_auth also validates nested token operations such as
+        // transfer, approve, or burn inside the provided auth vector.
+        if let Some(p) = auth_vec {
+            dapp_invoke_auth(&env, p)?;
+        }
+
+        let invoke_args = args.unwrap_or(vec![&env]);
+
+        let _res: Val = env.invoke_contract(&contract_id, &func, invoke_args);
+
         Ok(())
     }
 

@@ -30,7 +30,7 @@ pub struct UpgradeCancelledEvent {
 pub struct WalletCreationEvent {
     pub wallet: Address,
     pub passkey: BytesN<65>,
-   pub bls_keys: Vec<BytesN<96>>,
+    pub bls_keys: Vec<BytesN<96>>,
 }
 #[contractevent(topics = ["Update", "Admin"])]
 pub struct UpdateAdminEvent {

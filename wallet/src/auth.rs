@@ -112,7 +112,6 @@ pub fn __verify_passkey(
     Ok(())
 }
 
-
 /// Verify a BLS signature against the aggregated public key.
 ///
 /// Notes:

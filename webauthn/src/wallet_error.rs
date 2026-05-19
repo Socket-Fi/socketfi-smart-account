@@ -23,5 +23,6 @@ pub enum WalletError {
     NonceAlreadyUsed = 2075,
     RpidNotFound = 2085,
     InvalidNetwork = 2095,
-    InvalidAuthenticatorData=2105
+    InvalidAuthenticatorData = 2105,
+    InvalidInvokeArgs = 2115,
 }

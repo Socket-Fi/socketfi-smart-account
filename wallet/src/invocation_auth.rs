@@ -1,3 +1,4 @@
+use socketfi_shared::tokens::read_limit;
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
@@ -5,6 +6,72 @@ use soroban_sdk::{
 };
 
 use socketfi_access::access::read_fee_manager;
+
+fn require_args_len(args: &Vec<Val>, expected: u32) -> Result<(), WalletError> {
+    if args.len() != expected {
+        return Err(WalletError::InvalidInvokeArgs);
+    }
+
+    Ok(())
+}
+
+/// Validates token-related dapp_invoke and its deep auth calls against configured spend limits.
+///
+/// Only balance-reducing or allowance-creating operations are gated:
+/// - transfer(from, to, amount)
+/// - approve(from, spender, amount, expiration_ledger)
+/// - burn(from, amount)
+///
+/// Non-token functions bypass validation.
+///
+/// Notes:
+/// - `approve` is intentionally treated like a spend action because it
+///   creates future spending capability.
+/// - `transfer_from` and `burn_from` are excluded because they execute
+///   previously approved allowances and are bounded by approval.
+/// - Limits are enforced per invocation only (not cumulative usage).
+
+pub fn __validate_limit(
+    e: &Env,
+    asset: Address,
+    func: Symbol,
+    args: Vec<Val>,
+) -> Result<(), WalletError> {
+    let transfer = Symbol::new(e, "transfer");
+    let approve = Symbol::new(e, "approve");
+    let burn = Symbol::new(e, "burn");
+
+    let amount_index: Option<u32> = if func == transfer {
+        require_args_len(&args, 3)?;
+        Some(2)
+    } else if func == approve {
+        require_args_len(&args, 4)?;
+        Some(2)
+    } else if func == burn {
+        require_args_len(&args, 2)?;
+        Some(1)
+    } else {
+        None
+    };
+
+    let Some(index) = amount_index else {
+        return Ok(());
+    };
+
+    let amount: i128 = i128::from_val(e, &args.get_unchecked(index));
+
+    if amount <= 0 {
+        return Err(WalletError::InvalidAmount);
+    }
+
+    let limit = read_limit(e, asset);
+
+    if amount > limit {
+        return Err(WalletError::ExceedMaxAllowance);
+    }
+
+    Ok(())
+}
 
 /// Build and register deep auth entries for downstream contract invocations.
 ///
@@ -48,6 +115,8 @@ pub fn dapp_invoke_auth(e: &Env, auth_vec: Vec<Map<String, Val>>) -> Result<(), 
         } else {
             return Err(WalletError::InvalidInvokeFunction);
         };
+
+        __validate_limit(e, contract_id.clone(), func.clone(), args.clone())?;
 
         // Build one deep auth entry authorizing the current contract
         // to perform the described downstream contract invocation.
