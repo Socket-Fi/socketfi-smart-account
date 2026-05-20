@@ -169,7 +169,6 @@ pub fn __owner_require_auth(
     if let Some(signature) = passkey_sig {
         // Signature-based authorization path using aggregated BLS verification.
         __verify_passkey(&env, challenge, signature)?;
-        // fee_manager_deep_auth()
     } else {
         // Direct owner authorization path using the stored external owner address.
         let owner = read_owner(&env).unwrap();

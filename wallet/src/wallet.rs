@@ -2,17 +2,15 @@ use crate::{
     auth::{__owner_require_auth, compute_tx_nonce, read_nonce},
     constructor::init_constructor,
     data::{AccessSettings, PasskeySignature},
-    invocation_auth::{__validate_limit, dapp_invoke_auth, fee_manager_deep_auth},
+    fee_handler::handle_transaction_fee,
+    invocation_auth::{__validate_limit, dapp_invoke_auth},
     state::{is_initialized, read_owner, read_passkey, write_owner},
     wallet_trait::WalletTrait,
 };
 use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
-use socketfi_shared::{
-    fee_types::FeeDecision,
-    tokens::{
-        read_allowance, read_balance, read_default_spend_limit, read_limit, send_asset,
-        spend_asset, take_asset, write_approve, write_default_spend_limit, write_limit,
-    },
+use socketfi_shared::tokens::{
+    read_allowance, read_balance, read_default_spend_limit, read_limit, send_asset, spend_asset,
+    take_asset, write_approve, write_default_spend_limit, write_limit,
 };
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
@@ -188,12 +186,12 @@ impl WalletTrait for Wallet {
     /// - Requires owner authorization through the wallet auth flow.
     ///
     /// Effects:
-    /// - Transfers asset from wallet balance to the recipient.
-    /// - Quote and apply transaction fees before the transfer.
+    /// - Quotes and handles protocol transaction fees before withdrawal.
+    /// - Transfers the requested asset amount from the wallet to the recipient.
     ///
     /// Notes:
     /// - Rejects non-positive amounts.
-    /// - Enforces the configured asset spend limit.
+    /// - Enforces the configured asset spend limit before withdrawal.
     fn withdraw(
         env: Env,
         to: Address,
@@ -216,42 +214,9 @@ impl WalletTrait for Wallet {
             amount.into_val(&env),
         ];
         let challenge = compute_tx_nonce(&env, String::from_str(&env, "withdraw"), args);
-
         __owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
-        if let Some(_) = passkey_sig {
-            let fee_manager = read_fee_manager(&env).unwrap();
-
-            let args: Vec<Val> = vec![
-                &env,
-                env.current_contract_address().into_val(&env),
-                asset.into_val(&env),
-                amount.into_val(&env),
-            ];
-
-            let decision: FeeDecision = env.invoke_contract(
-                &fee_manager,
-                &Symbol::new(&env, "quote_transaction_fee"),
-                args,
-            );
-
-            match decision.clone() {
-                FeeDecision::CollectNow(data) => {
-                    fee_manager_deep_auth(&env, data.fee_asset, data.total_fee_in_asset);
-                }
-                FeeDecision::Defer(_) => {}
-            }
-
-            let _: Val = env.invoke_contract(
-                &fee_manager,
-                &Symbol::new(&env, "apply_transaction_fee"),
-                vec![
-                    &env,
-                    env.current_contract_address().into_val(&env),
-                    decision.into_val(&env),
-                ],
-            );
-        }
+        handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
 
         send_asset(&env, &to, &asset, amount);
         Ok(())
@@ -284,7 +249,7 @@ impl WalletTrait for Wallet {
         ];
         let payload = compute_tx_nonce(&env, String::from_str(&env, "approve"), args);
 
-        __owner_require_auth(env.clone(), payload, passkey_sig)?;
+        __owner_require_auth(env.clone(), payload, passkey_sig.clone())?;
 
         if amount < 0 {
             return Err(WalletError::InvalidAmount);
@@ -294,6 +259,7 @@ impl WalletTrait for Wallet {
             return Err(WalletError::ExceedMaxAllowance);
         }
 
+        handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
         write_approve(&env, &asset, &spender, &amount);
         Ok(())
     }

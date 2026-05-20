@@ -23,8 +23,10 @@ pub enum WalletError {
     NonceAlreadyUsed = 2075,
     RpidNotFound = 2085,
     FactoryNotFound = 2087,
+    FeeManagerNotFound = 2089,
     InvalidNetwork = 2095,
     InvalidAuthenticatorData = 2105,
     InvalidInvokeArgs = 2115,
-    WalletVersionNotFound=2125
+    WalletVersionNotFound = 2125,
+    MaxDeferredFeeExceeded = 2135,
 }

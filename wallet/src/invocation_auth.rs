@@ -7,6 +7,8 @@ use soroban_sdk::{
 
 use socketfi_access::access::read_fee_manager;
 
+use crate::fee_handler::handle_transaction_fee;
+
 fn require_args_len(args: &Vec<Val>, expected: u32) -> Result<(), WalletError> {
     if args.len() != expected {
         return Err(WalletError::InvalidInvokeArgs);
@@ -65,6 +67,8 @@ pub fn __validate_limit(
     }
 
     let limit = read_limit(e, asset);
+
+    // handle_transaction_fee(e, asset, amount, passkey_sig)?;
 
     if amount > limit {
         return Err(WalletError::ExceedMaxAllowance);
@@ -146,7 +150,7 @@ pub fn dapp_invoke_auth(e: &Env, auth_vec: Vec<Map<String, Val>>) -> Result<(), 
 /// - Assumes fee manager configuration exists.
 /// - Current implementation uses `unwrap()` when reading the fee manager,
 ///   so missing configuration would panic.
-pub fn fee_manager_deep_auth(e: &Env, tx_asset: Address, total_fee: i128) {
+pub fn __fee_deep_auth(e: &Env, tx_asset: Address, total_fee: i128) {
     // Resolve the configured fee manager address as the fee recipient.
     let to = read_fee_manager(&e).unwrap();
 

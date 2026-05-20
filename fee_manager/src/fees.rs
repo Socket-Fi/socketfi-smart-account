@@ -12,8 +12,11 @@ use socketfi_shared::{constants::RATE_PRECISION, tokens::read_is_supported_asset
 // - Returns Option because it may not be initialized yet (constructor responsibility)
 // - Caller should handle None safely (usually fallback or error)
 
-pub fn read_base_fee(e: &Env) -> Option<i128> {
-    e.storage().instance().get(&DataKey::BaseFee)
+pub fn read_base_fee(e: &Env) -> Result<i128, ContractError> {
+    e.storage()
+        .instance()
+        .get(&DataKey::BaseFee)
+        .ok_or(ContractError::BaseFeeNotConfigured)
 }
 
 pub fn write_base_fee(e: &Env, fee: i128) {
@@ -123,8 +126,20 @@ pub fn delete_fee_asset_rate(e: &Env, asset: &Address) {
 // - All assets must use consistent decimal assumptions
 
 pub fn convert_base_to_asset(total_fee: i128, asset_rate: i128) -> Result<i128, ContractError> {
-    total_fee
+    if total_fee < 0 || asset_rate <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    if total_fee == 0 {
+        return Ok(0);
+    }
+
+    let numerator = total_fee
         .checked_mul(asset_rate)
+        .ok_or(ContractError::InvalidAmount)?;
+
+    numerator
+        .checked_add(RATE_PRECISION - 1)
         .and_then(|v| v.checked_div(RATE_PRECISION))
         .ok_or(ContractError::InvalidAmount)
 }
