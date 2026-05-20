@@ -170,7 +170,7 @@ pub fn read_default_spend_limit(env: &Env) -> i128 {
 /// - Otherwise falls back to `DefaultSpendLimit`.
 ///
 /// NOTE:
-/// - A missing default also falls back to `0`.
+/// - A missing default also falls back to default.
 pub fn read_limit(env: &Env, asset: Address) -> i128 {
     env.storage()
         .instance()

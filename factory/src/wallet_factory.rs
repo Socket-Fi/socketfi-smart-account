@@ -177,19 +177,11 @@ pub fn __verify_passkey_pop(
         passkey_sig.clone().client_data_json,
     )?;
 
-    let client_data_hash: BytesN<32> = env.crypto().sha256(&passkey_sig.client_data_json).into();
+    let client_data_hash = env.crypto().sha256(&passkey_sig.client_data_json);
 
-    let mut signed_payload = Bytes::new(&env);
+    let mut signed_payload = passkey_sig.authenticator_data.clone();
+    signed_payload.extend_from_array(&client_data_hash.to_array());
 
-    // authenticatorData
-    signed_payload.append(&passkey_sig.authenticator_data);
-
-    // sha256(clientDataJSON)
-    let mut i = 0;
-    while i < 32 {
-        signed_payload.push_back(client_data_hash.get_unchecked(i));
-        i += 1;
-    }
     let digest = env.crypto().sha256(&signed_payload);
     env.crypto()
         .secp256r1_verify(&passkey_sig.key, &digest, &passkey_sig.sig);
