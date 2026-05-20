@@ -1,14 +1,17 @@
 #![allow(unused)]
 use crate::data::{BlsKeyWithPoP, DataKey, PasskeyWithPoP};
 use socketfi_access::access::{read_fee_manager, read_registry, read_social_router};
-use socketfi_shared::{bls::g1_group_gen_point, constants::DST};
+use socketfi_shared::{
+    bls::{g1_group_gen_point, is_g1_infinity},
+    constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
+};
 
 use socketfi_webauthn::{__validate_passkey_assertion_data, wallet_error::WalletError};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
     xdr::ToXdr,
-    Address, Bytes, BytesN, Env, String, Symbol, Vec,
+    Address, Bytes, BytesN, Env, Map, String, Symbol, Vec,
 };
 use upgrade::get_wallet_version;
 
@@ -85,7 +88,7 @@ pub fn read_creation_pop_challenge(
 // This aggregate key is used as part of wallet address derivation to ensure
 // the deployed wallet address commits to the intended BLS signer set rather
 // than the passkey alone.
-fn read_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> BytesN<96> {
+fn __validate_bls_agg(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
     let bls = env.crypto().bls12_381();
 
     let mut first_array = [0u8; 96];
@@ -105,7 +108,12 @@ fn read_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> BytesN<96> {
         agg_pk = bls.g1_add(&agg_pk, &pk);
     }
 
-    agg_pk.to_bytes()
+    let agg = agg_pk.to_bytes();
+
+    if is_g1_infinity(&agg) {
+        return Err(WalletError::KeyAtInfinity);
+    }
+    Ok(())
 }
 
 /// Verifies proof-of-possession for one submitted BLS public key.
@@ -185,6 +193,34 @@ pub fn __verify_passkey_pop(
     let digest = env.crypto().sha256(&signed_payload);
     env.crypto()
         .secp256r1_verify(&passkey_sig.key, &digest, &passkey_sig.sig);
+
+    Ok(())
+}
+
+pub fn __validate_bls_key_set(env: &Env, keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
+    if keys.len() < MIN_BLS_KEYS {
+        return Err(WalletError::InsufficientKeys);
+    }
+
+    if keys.len() > MAX_BLS_KEYS {
+        return Err(WalletError::TooManyKeys);
+    }
+
+    let mut seen: Map<BytesN<96>, bool> = Map::new(env);
+
+    for key in keys.iter() {
+        if seen.contains_key(key.clone()) {
+            return Err(WalletError::DuplicateKeys);
+        }
+
+        seen.set(key.clone(), true);
+
+        if is_g1_infinity(&key) {
+            return Err(WalletError::KeyAtInfinity);
+        }
+    }
+
+    __validate_bls_agg(env, keys)?;
 
     Ok(())
 }

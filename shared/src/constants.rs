@@ -1,4 +1,5 @@
 pub const MAX_LEN: u32 = 256;
+pub const MIN_BLS_KEYS: u32 = 2;
 pub const MAX_BLS_KEYS: u32 = 5;
 pub const DAY_IN_LEDGERS: u32 = 100;
 // pub const DAY_IN_LEDGERS: u32 = 17280;

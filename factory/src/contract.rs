@@ -2,8 +2,9 @@ use crate::{
     contract_trait::FactoryTrait,
     data::{BlsKeyWithPoP, PasskeyWithPoP},
     wallet_factory::{
-        __verify_each_bls_key, __verify_passkey_pop, extract_bls_keys, read_creation_pop_challenge,
-        write_create_wallet, write_creation_nonce_used, write_rpid_hash,
+        __validate_bls_key_set, __verify_each_bls_key, __verify_passkey_pop, extract_bls_keys,
+        read_creation_pop_challenge, write_create_wallet, write_creation_nonce_used,
+        write_rpid_hash,
     },
 };
 use socketfi_access::access::{
@@ -95,11 +96,14 @@ impl FactoryTrait for FactoryContract {
     ) -> Result<Address, WalletError> {
         let challenge = read_creation_pop_challenge(&e, &nonce, &network)?;
         __verify_passkey_pop(&e, challenge.clone(), passkey_pop.clone())?;
+        let bls_keys = extract_bls_keys(&e, bls_keys_pop.clone());
+
+        __validate_bls_key_set(&e, bls_keys.clone())?;
 
         for bls_key_pop in bls_keys_pop.iter() {
             __verify_each_bls_key(&e, challenge.clone(), bls_key_pop)?;
         }
-        let bls_keys = extract_bls_keys(&e, bls_keys_pop.clone());
+
         let wallet_address =
             write_create_wallet(&e, &passkey_pop.key, bls_keys.clone(), challenge)?;
 
