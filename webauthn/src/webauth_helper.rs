@@ -46,22 +46,6 @@ fn json_slice_equals(json: &Bytes, start: u32, end: u32, expected: &[u8]) -> boo
     true
 }
 
-/// Converts a static ASCII byte slice into Soroban `Bytes`.
-///
-/// Primarily used for deterministic on-chain comparison values and
-/// protocol constants.
-pub fn ascii_bytes(env: &Env, input: &[u8]) -> Bytes {
-    let mut out = Bytes::new(env);
-
-    let mut i = 0;
-    while i < input.len() {
-        out.push_back(input[i]);
-        i += 1;
-    }
-
-    out
-}
-
 /// Decodes and compares a JSON string value against `expected`.
 ///
 /// Supports standard JSON escape sequences except unicode escapes

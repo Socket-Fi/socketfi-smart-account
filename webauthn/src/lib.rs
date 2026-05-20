@@ -2,7 +2,7 @@
 
 use soroban_sdk::{Bytes, BytesN, Env};
 use wallet_error::WalletError;
-use webauth_helper::{ascii_bytes, base64url_encode_no_pad, json_string_field_equals};
+use webauth_helper::{base64url_encode_no_pad, json_string_field_equals};
 pub mod wallet_error;
 pub mod webauth_helper;
 
@@ -30,7 +30,7 @@ fn __verify_webauthn_client_data(
         return Err(WalletError::ClientDataTooLarge);
     }
 
-    let webauthn_get = ascii_bytes(env, b"webauthn.get");
+    let webauthn_get = Bytes::from_slice(env, b"webauthn.get");
 
     if !json_string_field_equals(env, &client_data_json, b"type", &webauthn_get) {
         return Err(WalletError::InvalidClientDataType);
