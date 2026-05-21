@@ -13,7 +13,7 @@ use soroban_sdk::{
     xdr::ToXdr,
     Address, Bytes, BytesN, Env, Map, String, Symbol, Vec,
 };
-use upgrade::get_wallet_version;
+use upgrade::read_wallet_wasm_hash;
 
 pub fn extract_bls_keys(e: &Env, bls_keys_pop: Vec<BlsKeyWithPoP>) -> Vec<BytesN<96>> {
     let mut bls_keys: Vec<BytesN<96>> = Vec::new(e);
@@ -234,7 +234,7 @@ pub fn write_create_wallet(
     challenge: BytesN<32>,
 ) -> Result<Address, WalletError> {
     // Load the approved wallet wasm version for deployment.
-    let wasm = get_wallet_version(&e).unwrap();
+    let wasm = read_wallet_wasm_hash(&e).unwrap();
 
     // Load the configured RP ID hash bound to passkey verification.
     let rpid_hash = read_rpid_hash(e)?;

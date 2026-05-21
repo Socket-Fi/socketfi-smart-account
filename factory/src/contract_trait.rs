@@ -44,7 +44,7 @@ pub trait FactoryTrait {
     // read-only getters
 
     /// Get current wallet wasm version.
-    fn get_wallet_version(e: Env) -> Option<BytesN<32>>;
+    fn get_wallet_wasm_hash(e: Env) -> Option<BytesN<32>>;
 
     ///Canonical proof-of-possession challenge salt
     fn get_pop_challenge(

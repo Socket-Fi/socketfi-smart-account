@@ -8,8 +8,8 @@ pub mod voters;
 use crate::errors::UpgradeError;
 use crate::storage::{
     clear_pending_upgrade_state, get_upgrade_voting_deadline, read_future_wasm, read_proposal_type,
-    read_wallet_version, write_future_wasm, write_upgrade_voting_deadline, write_wallet_version,
-    DataKey,
+    read_wallet_wasm_version, write_future_wasm, write_upgrade_voting_deadline,
+    write_wallet_wasm_version, DataKey,
 };
 use crate::types::UpgradeType;
 use crate::voters::{read_has_upgrade_passed, read_is_voter, write_add_voter, write_remove_voter};
@@ -31,7 +31,7 @@ use soroban_sdk::{Address, BytesN, Env, Map, String};
 //
 // ERROR:
 // - AlreadyInitialized -> if wallet version has already been set.
-pub fn init_wallet_version(e: &Env, wallet_version: &BytesN<32>) -> Result<(), UpgradeError> {
+pub fn init_wallet_wasm_hash(e: &Env, wallet_version: &BytesN<32>) -> Result<(), UpgradeError> {
     if e.storage()
         .persistent()
         .get::<_, BytesN<32>>(&DataKey::WalletVersion)
@@ -40,7 +40,7 @@ pub fn init_wallet_version(e: &Env, wallet_version: &BytesN<32>) -> Result<(), U
         return Err(UpgradeError::AlreadyInitialized);
     }
 
-    write_wallet_version(e, wallet_version);
+    write_wallet_wasm_version(e, wallet_version);
     Ok(())
 }
 
@@ -208,7 +208,7 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
             .publish(&e);
         }
         UpgradeType::WalletVersion => {
-            write_wallet_version(e, &new_wasm_hash);
+            write_wallet_wasm_version(e, &new_wasm_hash);
             clear_pending_upgrade_state(e);
 
             events::WalletVersionUpgradeEvent {
@@ -260,8 +260,8 @@ pub fn get_upgrade_votes(e: &Env) -> Result<(u32, bool), UpgradeError> {
 //
 // NOTE:
 // - Returns None if wallet version has not been initialized yet.
-pub fn get_wallet_version(e: &Env) -> Option<BytesN<32>> {
-    read_wallet_version(e)
+pub fn read_wallet_wasm_hash(e: &Env) -> Option<BytesN<32>> {
+    read_wallet_wasm_version(e)
 }
 
 // -----------------------------------------------------------------------------

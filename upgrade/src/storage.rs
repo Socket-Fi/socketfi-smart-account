@@ -171,7 +171,7 @@ pub fn write_future_wasm(
 /// NOTE:
 /// - This value persists across proposals.
 /// - It represents the "current approved wallet implementation".
-pub fn write_wallet_version(e: &Env, wasm_hash: &BytesN<32>) {
+pub fn write_wallet_wasm_version(e: &Env, wasm_hash: &BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::WalletVersion, wasm_hash);
@@ -182,7 +182,7 @@ pub fn write_wallet_version(e: &Env, wasm_hash: &BytesN<32>) {
 /// RETURNS:
 /// - `Some(hash)` → wallet version initialized
 /// - `None` → not initialized yet
-pub fn read_wallet_version(e: &Env) -> Option<BytesN<32>> {
+pub fn read_wallet_wasm_version(e: &Env) -> Option<BytesN<32>> {
     e.storage().instance().get(&DataKey::WalletVersion)
 }
 

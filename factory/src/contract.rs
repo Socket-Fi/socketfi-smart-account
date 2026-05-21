@@ -15,8 +15,8 @@ use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Symbol, Vec};
 use upgrade::{
     cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
-    get_wallet_version as read_wallet_version, init_wallet_version, upgrade_add_voter,
-    upgrade_remove_voter, write_cast_vote,
+    init_wallet_wasm_hash, read_wallet_wasm_hash, upgrade_add_voter, upgrade_remove_voter,
+    write_cast_vote,
 };
 
 /// Factory contract for wallet deployment and wallet-version governance.
@@ -65,7 +65,7 @@ impl FactoryTrait for FactoryContract {
         write_rpid_hash(&e, &rpid);
 
         // Store the initial wallet version approved for deployment.
-        init_wallet_version(&e, &wasm)?;
+        init_wallet_wasm_hash(&e, &wasm)?;
 
         // Bootstrap governance by allowing the initial admin to vote.
         upgrade_add_voter(&e, &admin);
@@ -124,8 +124,8 @@ impl FactoryTrait for FactoryContract {
     ///
     /// Notes:
     /// - Read-only helper used to inspect deployment version state.
-    fn get_wallet_version(e: Env) -> Option<BytesN<32>> {
-        read_wallet_version(&e)
+    fn get_wallet_wasm_hash(e: Env) -> Option<BytesN<32>> {
+        read_wallet_wasm_hash(&e)
     }
 
     /// Returns the deterministic wallet-creation proof challenge.

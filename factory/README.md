@@ -85,7 +85,7 @@ Deploys a new wallet instance.
 
 ### Read Methods
 
-- `get_wallet_version`
+- `get_wallet_wasm_hash`
 - `get_admin`
 - `get_registry`
 - `get_fee_manager`

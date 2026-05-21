@@ -518,7 +518,7 @@ impl WalletTrait for Wallet {
         let wasm: BytesN<32> = env
             .invoke_contract::<Option<BytesN<32>>>(
                 &factory,
-                &Symbol::new(&env, "get_wallet_version"),
+                &Symbol::new(&env, "get_wallet_wasm_hash"),
                 vec![&env],
             )
             .ok_or(WalletError::WalletVersionNotFound)?;
