@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use crate::{
-    data::{AuthContext, PasskeySignature},
+    data::{AuthContext, DataKey, PasskeySignature},
     state::read_passkey,
     state::{read_agg_bls_key, read_owner, read_rpid_hash},
 };
@@ -15,6 +15,22 @@ use socketfi_shared::{
     bls::g1_group_gen_point,
     constants::{DST, MAX_AUTH_WINDOW_LEDGER},
 };
+
+pub fn read_nonce(env: &Env) -> u64 {
+    env.storage().instance().get(&DataKey::Nonce).unwrap_or(0)
+}
+pub fn write_nonce(env: &Env, nonce: u64) {
+    env.storage().instance().set(&DataKey::Nonce, &nonce);
+}
+
+pub fn increment_nonce(env: &Env) -> u64 {
+    let nonce = read_nonce(env);
+    let next = nonce.saturating_add(1);
+
+    write_nonce(env, next);
+
+    next
+}
 
 // Ensures externally signed wallet authorizations are short-lived.
 // The caller supplies `valid_until_ledger` as part of the signed payload,
@@ -60,17 +76,18 @@ pub fn compute_tx_nonce(
     env: &Env,
     func: String,
     args: Vec<Val>,
-    auth: AuthContext,
+    valid_until_ledger: u32,
 ) -> Result<BytesN<32>, WalletError> {
-    validate_auth_window(env, auth.valid_until_ledger)?;
+    validate_auth_window(env, valid_until_ledger)?;
+    let nonce = read_nonce(env);
 
     let mut payload = Bytes::new(env);
 
     payload.append(&Bytes::from_slice(env, b"SOCKETFI_WALLET_AUTH_V1"));
     payload.append(&env.current_contract_address().to_xdr(env));
 
-    payload.append(&auth.nonce.to_xdr(env));
-    payload.append(&auth.valid_until_ledger.to_xdr(env));
+    payload.append(&nonce.to_xdr(env));
+    payload.append(&valid_until_ledger.to_xdr(env));
 
     payload.append(&func.to_xdr(env));
 

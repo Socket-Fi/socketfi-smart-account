@@ -1,7 +1,7 @@
 use crate::{
-    auth::{compute_tx_nonce, owner_require_auth},
+    auth::{compute_tx_nonce, increment_nonce, owner_require_auth},
     constructor::init_constructor,
-    data::{AccessSettings, AuthContext, PasskeySignature},
+    data::{AccessSettings, PasskeySignature},
     fee_handler::handle_transaction_fee,
     invocation_auth::{dapp_invoke_auth, validate_limit},
     state::{is_initialized, read_owner, read_passkey, write_owner},
@@ -82,18 +82,19 @@ impl WalletTrait for Wallet {
         env: Env,
         external_wallet: Address,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
         let args: Vec<Val> = vec![&env, external_wallet.clone().to_val()];
         let challenge = compute_tx_nonce(
             &env,
             String::from_str(&env, "set_external_wallet"),
             args,
-            auth,
+            valid_until_ledger,
         )?;
 
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
         write_owner(&env, &external_wallet);
+        increment_nonce(&env);
 
         Ok(())
     }
@@ -115,23 +116,24 @@ impl WalletTrait for Wallet {
         env: Env,
         limit: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
+        if limit < 0 {
+            return Err(WalletError::InvalidLimit);
+        }
+
         let args: Vec<Val> = vec![&env, limit.into_val(&env)];
         let challenge = compute_tx_nonce(
             &env,
             String::from_str(&env, "update_default_limit"),
             args,
-            auth,
+            valid_until_ledger,
         )?;
 
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
-        if limit < 0 {
-            return Err(WalletError::InvalidLimit);
-        }
-
         write_default_spend_limit(&env, limit);
+        increment_nonce(&env);
         Ok(())
     }
 
@@ -152,18 +154,24 @@ impl WalletTrait for Wallet {
         asset: Address,
         limit: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
-        let args: Vec<Val> = vec![&env, asset.clone().into_val(&env), limit.into_val(&env)];
-        let challenge = compute_tx_nonce(&env, String::from_str(&env, "set_limit"), args, auth)?;
-
-        owner_require_auth(env.clone(), challenge, passkey_sig)?;
-
         if limit < 0 {
             return Err(WalletError::InvalidLimit);
         }
 
+        let args: Vec<Val> = vec![&env, asset.clone().into_val(&env), limit.into_val(&env)];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "set_limit"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
+
         write_limit(&env, asset, limit);
+        increment_nonce(&env);
         Ok(())
     }
 
@@ -211,7 +219,7 @@ impl WalletTrait for Wallet {
         asset: Address,
         amount: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
         if amount <= 0 {
             return Err(WalletError::InvalidAmount);
@@ -227,12 +235,18 @@ impl WalletTrait for Wallet {
             asset.clone().into_val(&env),
             amount.into_val(&env),
         ];
-        let challenge = compute_tx_nonce(&env, String::from_str(&env, "withdraw"), args, auth)?;
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "withdraw"),
+            args,
+            valid_until_ledger,
+        )?;
         owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
         handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
 
         send_asset(&env, &to, &asset, amount);
+        increment_nonce(&env);
         Ok(())
     }
 
@@ -254,18 +268,8 @@ impl WalletTrait for Wallet {
         spender: Address,
         amount: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
-        let args: Vec<Val> = vec![
-            &env,
-            asset.clone().into_val(&env),
-            spender.clone().into_val(&env),
-            amount.into_val(&env),
-        ];
-        let challenge = compute_tx_nonce(&env, String::from_str(&env, "approve"), args, auth)?;
-
-        owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
-
         if amount < 0 {
             return Err(WalletError::InvalidAmount);
         }
@@ -274,8 +278,24 @@ impl WalletTrait for Wallet {
             return Err(WalletError::ExceedMaxAllowance);
         }
 
+        let args: Vec<Val> = vec![
+            &env,
+            asset.clone().into_val(&env),
+            spender.clone().into_val(&env),
+            amount.into_val(&env),
+        ];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "approve"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
+
         handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
         write_approve(&env, &asset, &spender, &amount);
+        increment_nonce(&env);
         Ok(())
     }
 
@@ -333,7 +353,7 @@ impl WalletTrait for Wallet {
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
         // Validate the top-level call in case the wallet is directly invoking
         // a gated token operation such as transfer, approve, or burn.
@@ -362,8 +382,12 @@ impl WalletTrait for Wallet {
             a_args.push_back(p.into_val(&env));
         }
 
-        let challenge =
-            compute_tx_nonce(&env, String::from_str(&env, "dapp_invoker"), a_args, auth)?;
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "dapp_invoker"),
+            a_args,
+            valid_until_ledger,
+        )?;
 
         // Verify wallet owner/passkey authorization before granting any
         // current-contract deep auth.
@@ -380,6 +404,7 @@ impl WalletTrait for Wallet {
         let invoke_args = args.unwrap_or(vec![&env]);
 
         let _res: Val = env.invoke_contract(&contract_id, &func, invoke_args);
+        increment_nonce(&env);
 
         Ok(())
     }
@@ -439,9 +464,9 @@ impl WalletTrait for Wallet {
         env: Env,
         func: String,
         args: Vec<Val>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<BytesN<32>, WalletError> {
-        compute_tx_nonce(&env, func, args, auth)
+        compute_tx_nonce(&env, func, args, valid_until_ledger)
     }
 
     /// Return wallet balance for the specified asset.
@@ -529,7 +554,7 @@ impl WalletTrait for Wallet {
     fn upgrade(
         env: Env,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
         // Load the factory address that controls the approved wallet wasm version.
         let factory = read_factory(&env).ok_or(WalletError::FactoryNotFound)?;
@@ -545,12 +570,18 @@ impl WalletTrait for Wallet {
 
         // Bind owner authorization to this specific upgrade action and wasm hash.
         let args: Vec<Val> = vec![&env, wasm.clone().into_val(&env)];
-        let challenge = compute_tx_nonce(&env, String::from_str(&env, "upgrade"), args, auth)?;
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "upgrade"),
+            args,
+            valid_until_ledger,
+        )?;
 
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
         // Upgrade this wallet to the factory-approved wasm.
         env.deployer().update_current_contract_wasm(wasm);
+        increment_nonce(&env);
 
         Ok(())
     }

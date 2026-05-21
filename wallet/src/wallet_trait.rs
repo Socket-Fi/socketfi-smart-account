@@ -1,7 +1,7 @@
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Val, Vec};
 
-use crate::data::{AccessSettings, AuthContext, PasskeySignature};
+use crate::data::{AccessSettings, PasskeySignature};
 
 pub trait WalletTrait {
     // initialization
@@ -21,14 +21,14 @@ pub trait WalletTrait {
         env: Env,
         external_wallet: Address,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     fn update_default_limit(
         env: Env,
         limit: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     fn set_asset_limit(
@@ -36,7 +36,7 @@ pub trait WalletTrait {
         asset: Address,
         limit: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     // asset actions
@@ -48,7 +48,7 @@ pub trait WalletTrait {
         asset: Address,
         amount: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     fn approve(
@@ -57,7 +57,7 @@ pub trait WalletTrait {
         spender: Address,
         amount: i128,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     fn spend(
@@ -76,7 +76,7 @@ pub trait WalletTrait {
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     // views
@@ -88,7 +88,7 @@ pub trait WalletTrait {
         env: Env,
         func: String,
         args: Vec<Val>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<BytesN<32>, WalletError>;
     fn get_balance(env: Env, asset: Address) -> i128;
     fn get_owner(env: Env) -> Option<Address>;
@@ -101,6 +101,6 @@ pub trait WalletTrait {
     fn upgrade(
         env: Env,
         passkey_sig: Option<PasskeySignature>,
-        auth: AuthContext,
+        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 }
