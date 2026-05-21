@@ -16,7 +16,7 @@ use socketfi_access::access::{
     authenticate_admin, has_admin, read_registry, write_admin, write_registry,
 };
 use socketfi_shared::{
-    constants::DEFAULT_CLAIM_PERIOD,
+    constants::DEFAULT_CLAIM_PERIOD_SECONDS,
     events,
     registry_errors::RegistryError,
     tokens::{
@@ -92,7 +92,7 @@ impl SocialPaymentsTrait for SocialPayments {
 
         validate_userid(user_id.clone())?;
 
-        let claim_periond: u64 = duration.unwrap_or(DEFAULT_CLAIM_PERIOD);
+        let claim_periond: u64 = duration.unwrap_or(DEFAULT_CLAIM_PERIOD_SECONDS);
 
         let args: Vec<Val> = vec![&e, platform.into_val(&e), user_id.into_val(&e)];
 

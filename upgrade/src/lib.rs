@@ -14,7 +14,7 @@ use crate::storage::{
 use crate::types::UpgradeType;
 use crate::voters::{read_has_upgrade_passed, read_is_voter, write_add_voter, write_remove_voter};
 
-use socketfi_shared::{constants::UPGRADE_VOTING_DURATION, events};
+use socketfi_shared::{constants::UPGRADE_VOTING_DURATION_SECONDS, events};
 use soroban_sdk::{Address, BytesN, Env, Map, String};
 
 // -----------------------------------------------------------------------------
@@ -57,7 +57,7 @@ pub fn init_wallet_version(e: &Env, wallet_version: &BytesN<32>) -> Result<(), U
 //
 // NOTE:
 // - `proposal_type` determines execution behavior later.
-// - Voting window length is controlled by UPGRADE_VOTING_DURATION.
+// - Voting window length is controlled by UPGRADE_VOTING_DURATION_SECONDS.
 //
 // SECURITY:
 // - This helper assumes caller already enforced proposer authorization.
@@ -71,7 +71,7 @@ pub fn create_upgrade_proposal(
         return Err(UpgradeError::AnotherUpgradePending);
     }
 
-    let deadline = e.ledger().timestamp() + UPGRADE_VOTING_DURATION;
+    let deadline = e.ledger().timestamp() + UPGRADE_VOTING_DURATION_SECONDS;
     write_upgrade_voting_deadline(e, &deadline);
     write_future_wasm(e, proposal_type, wasm_hash)?;
 

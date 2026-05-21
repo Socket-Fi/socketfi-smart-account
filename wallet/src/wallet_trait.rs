@@ -11,10 +11,11 @@ pub trait WalletTrait {
         rpid_hash: BytesN<32>,
         bls_keys: Vec<BytesN<96>>,
         registry: Address,
-        fee_manager: Address,
         social_router: Address,
+        fee_manager: Address,
         factory: Address,
-    ) -> Result<(), WalletError>;
+    ) -> Result<(), WalletError> ;
+    
 
     // owner/account settings
     fn set_external_wallet(

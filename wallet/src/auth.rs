@@ -13,7 +13,7 @@ use crate::{
 };
 use socketfi_shared::{
     bls::g1_group_gen_point,
-    constants::{DST, MAX_AUTH_WINDOW},
+    constants::{DST, MAX_AUTH_WINDOW_LEDGER},
 };
 
 // Ensures externally signed wallet authorizations are short-lived.
@@ -27,7 +27,7 @@ pub fn __validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), 
     }
 
     let max_allowed = current
-        .checked_add(MAX_AUTH_WINDOW)
+        .checked_add(MAX_AUTH_WINDOW_LEDGER)
         .ok_or(WalletError::InvalidLedgerWindow)?;
 
     if valid_until_ledger > max_allowed {

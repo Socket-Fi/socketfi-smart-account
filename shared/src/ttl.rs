@@ -10,7 +10,7 @@ use crate::constants::DAY_IN_LEDGERS;
 ///
 /// DESIGN:
 /// - Refreshes instance storage TTL close to the maximum allowed by the network.
-/// - Uses `DAY_IN_LEDGERS` as a safety buffer to avoid extending at the exact edge.
+/// - Uses `DAY_IN_SECONDS` as a safety buffer to avoid extending at the exact edge.
 ///
 /// IMPORTANT:
 /// - This affects INSTANCE storage only.
