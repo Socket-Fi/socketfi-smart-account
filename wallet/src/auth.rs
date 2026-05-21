@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use crate::{
-    data::{AuthContext, DataKey, PasskeySignature},
+    data::{DataKey, PasskeySignature},
     state::read_passkey,
     state::{read_agg_bls_key, read_owner, read_rpid_hash},
 };

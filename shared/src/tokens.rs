@@ -142,27 +142,6 @@ pub fn read_allowance_expiration(env: &Env) -> u32 {
 // Spend Limits
 // -----------------------------------------------------------------------------
 
-/// Stores the default spend limit.
-///
-/// NOTE:
-/// - Used as fallback for assets without a specific override.
-pub fn write_default_spend_limit(env: &Env, limit: i128) {
-    env.storage()
-        .instance()
-        .set(&DataKey::DefaultSpendLimit, &limit);
-}
-
-/// Returns the default spend limit.
-///
-/// DEFAULT:
-/// - `0` if not set.
-pub fn read_default_spend_limit(env: &Env) -> i128 {
-    env.storage()
-        .instance()
-        .get(&DataKey::DefaultSpendLimit)
-        .unwrap_or(0)
-}
-
 /// Returns the spend limit for a specific asset.
 ///
 /// BEHAVIOR:
@@ -171,11 +150,8 @@ pub fn read_default_spend_limit(env: &Env) -> i128 {
 ///
 /// NOTE:
 /// - A missing default also falls back to default.
-pub fn read_limit(env: &Env, asset: Address) -> i128 {
-    env.storage()
-        .instance()
-        .get(&DataKey::SpendLimit(asset))
-        .unwrap_or(read_default_spend_limit(&env))
+pub fn read_limit(env: &Env, asset: Address) -> Option<i128> {
+    env.storage().instance().get(&DataKey::SpendLimit(asset))
 }
 
 /// Stores the spend limit for a specific asset.

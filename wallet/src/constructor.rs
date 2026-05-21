@@ -1,4 +1,4 @@
-use socketfi_shared::tokens::{write_allowance_expiration, write_default_spend_limit};
+use socketfi_shared::tokens::write_allowance_expiration;
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Vec};
 
@@ -37,9 +37,6 @@ pub fn init_constructor(
     write_fee_manager(&env, &fee_manager);
     write_social_router(&env, &social_router);
     write_factory(&env, &factory);
-
-    // Set the initial default spend limit for wallet-controlled token operations.
-    write_default_spend_limit(&env, 1_000_000_000);
 
     // Set the initial allowance expiration configuration used for approvals.
     write_allowance_expiration(&env, 17_000);

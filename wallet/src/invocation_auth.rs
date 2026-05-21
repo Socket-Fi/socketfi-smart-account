@@ -66,10 +66,10 @@ pub fn validate_limit(
         return Err(WalletError::InvalidAmount);
     }
 
-    let limit = read_limit(e, asset);
-
-    if amount > limit {
-        return Err(WalletError::ExceedMaxAllowance);
+    if let Some(limit) = read_limit(e, asset) {
+        if amount > limit {
+            return Err(WalletError::ExceedMaxAllowance);
+        }
     }
 
     Ok(())

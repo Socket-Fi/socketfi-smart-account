@@ -1,7 +1,7 @@
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Val, Vec};
 
-use crate::data::{AccessSettings, PasskeySignature};
+use crate::data::PasskeySignature;
 
 pub trait WalletTrait {
     // initialization
@@ -20,13 +20,6 @@ pub trait WalletTrait {
     fn set_external_wallet(
         env: Env,
         external_wallet: Address,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    fn update_default_limit(
-        env: Env,
-        limit: i128,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
@@ -80,9 +73,9 @@ pub trait WalletTrait {
     ) -> Result<(), WalletError>;
 
     // views
-    fn get_account_parameters(env: Env) -> AccessSettings;
     fn get_passkey(env: Env) -> Option<BytesN<65>>;
     fn get_allowance(env: Env, asset: Address, spender: Address) -> i128;
+    fn get_limit(env: Env, asset: Address) -> Option<i128>;
 
     fn get_tx_payload(
         env: Env,

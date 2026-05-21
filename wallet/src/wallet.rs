@@ -1,7 +1,7 @@
 use crate::{
     auth::{compute_tx_nonce, increment_nonce, owner_require_auth},
     constructor::init_constructor,
-    data::{AccessSettings, PasskeySignature},
+    data::PasskeySignature,
     fee_handler::handle_transaction_fee,
     invocation_auth::{dapp_invoke_auth, validate_limit},
     state::{is_initialized, read_owner, read_passkey, write_owner},
@@ -9,8 +9,8 @@ use crate::{
 };
 use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
 use socketfi_shared::tokens::{
-    read_allowance, read_balance, read_default_spend_limit, read_limit, send_asset, spend_asset,
-    take_asset, write_approve, write_default_spend_limit, write_limit,
+    read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset, write_approve,
+    write_limit,
 };
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
@@ -99,44 +99,6 @@ impl WalletTrait for Wallet {
         Ok(())
     }
 
-    // spend limits
-
-    /// Update the default spend limit used by asset operations.
-    ///
-    /// Auth:
-    /// - Requires owner authorization through the wallet auth flow.
-    ///
-    /// Effects:
-    /// - Replaces the default spend limit in storage.
-    ///
-    /// Notes:
-    /// - Rejects negative values.
-    /// - This default is used when no asset-specific limit is configured.
-    fn update_default_limit(
-        env: Env,
-        limit: i128,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError> {
-        if limit < 0 {
-            return Err(WalletError::InvalidLimit);
-        }
-
-        let args: Vec<Val> = vec![&env, limit.into_val(&env)];
-        let challenge = compute_tx_nonce(
-            &env,
-            String::from_str(&env, "update_default_limit"),
-            args,
-            valid_until_ledger,
-        )?;
-
-        owner_require_auth(env.clone(), challenge, passkey_sig)?;
-
-        write_default_spend_limit(&env, limit);
-        increment_nonce(&env);
-        Ok(())
-    }
-
     /// Set a asset-specific spend limit.
 
     /// Auth:
@@ -147,7 +109,6 @@ impl WalletTrait for Wallet {
     ///
     /// Notes:
     /// - Rejects negative values.
-    /// - This value overrides the default limit for the specified asset.
     /// - Payload includes asset, limit, and nonce to prevent replay.
     fn set_asset_limit(
         env: Env,
@@ -225,8 +186,10 @@ impl WalletTrait for Wallet {
             return Err(WalletError::InvalidAmount);
         }
 
-        if amount > read_limit(&env, asset.clone()) {
-            return Err(WalletError::ExceedMaxAllowance);
+        if let Some(limit) = read_limit(&env, asset.clone()) {
+            if amount > limit {
+                return Err(WalletError::ExceedMaxAllowance);
+            }
         }
 
         let args: Vec<Val> = vec![
@@ -274,8 +237,10 @@ impl WalletTrait for Wallet {
             return Err(WalletError::InvalidAmount);
         }
 
-        if amount > read_limit(&env, asset.clone()) {
-            return Err(WalletError::ExceedMaxAllowance);
+        if let Some(limit) = read_limit(&env, asset.clone()) {
+            if amount > limit {
+                return Err(WalletError::ExceedMaxAllowance);
+            }
         }
 
         let args: Vec<Val> = vec![
@@ -409,27 +374,6 @@ impl WalletTrait for Wallet {
         Ok(())
     }
 
-    // ---------------------------------------------------------------------
-    // view methods
-    // ---------------------------------------------------------------------
-
-    /// Return wallet access settings.
-    ///
-    /// Effects:
-    /// - Reads the default spend limit and linked external owner from storage.
-    ///
-    /// Notes:
-    /// - Read-only helper for clients and integrations.
-    fn get_account_parameters(env: Env) -> AccessSettings {
-        let default_allowance = read_default_spend_limit(&env);
-        let g_account = read_owner(&env);
-
-        AccessSettings {
-            default_allowance,
-            g_account,
-        }
-    }
-
     /// Return the stored passkey, if configured.
     ///
     /// Effects:
@@ -450,6 +394,17 @@ impl WalletTrait for Wallet {
     /// - Read-only helper.
     fn get_allowance(env: Env, asset: Address, spender: Address) -> i128 {
         read_allowance(&env, &asset, &spender)
+    }
+
+    /// Returns the configured spend limit for an asset.
+    ///
+    /// Audit note:
+    /// Returning `Option<i128>` avoids overloading sentinel values (e.g. `0`)
+    /// and makes the semantics explicit:
+    /// - `Some(limit)` → enforce the configured limit
+    /// - `None` → no asset-specific limit configured
+    fn get_limit(env: Env, asset: Address) -> Option<i128> {
+        read_limit(&env, asset)
     }
 
     /// Compute the authorization payload hash for a function call.
