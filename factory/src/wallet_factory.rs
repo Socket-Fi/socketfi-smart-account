@@ -6,7 +6,7 @@ use socketfi_shared::{
     constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
 };
 
-use socketfi_webauthn::{__validate_passkey_assertion_data, wallet_error::WalletError};
+use socketfi_webauthn::{validate_passkey_assertion_data, wallet_error::WalletError};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
@@ -24,7 +24,7 @@ pub fn extract_bls_keys(e: &Env, bls_keys_pop: Vec<BlsKeyWithPoP>) -> Vec<BytesN
 
     bls_keys
 }
-fn __validate_network(e: &Env, network: &Symbol) -> Result<(), WalletError> {
+fn validate_network(e: &Env, network: &Symbol) -> Result<(), WalletError> {
     let testnet = Symbol::new(e, "TESTNET");
     let public = Symbol::new(e, "PUBLIC");
 
@@ -65,7 +65,7 @@ pub fn read_creation_pop_challenge(
     nonce: &BytesN<32>,
     network: &Symbol,
 ) -> Result<BytesN<32>, WalletError> {
-    __validate_network(e, &network)?;
+    validate_network(e, &network)?;
 
     if read_creation_nonce_used(e, nonce) {
         return Err(WalletError::NonceAlreadyUsed);
@@ -88,7 +88,7 @@ pub fn read_creation_pop_challenge(
 // This aggregate key is used as part of wallet address derivation to ensure
 // the deployed wallet address commits to the intended BLS signer set rather
 // than the passkey alone.
-fn __validate_bls_agg(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
+fn validate_bls_agg(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
     let bls = env.crypto().bls12_381();
 
     let mut first_array = [0u8; 96];
@@ -122,7 +122,7 @@ fn __validate_bls_agg(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), Wallet
 /// binds the BLS key set to the same creation intent authorized by the passkey
 /// and prevents accepting public keys whose private keys are not controlled by
 /// the claimed signer.
-pub fn __verify_each_bls_key(
+pub fn verify_each_bls_key(
     e: &Env,
     challenge: BytesN<32>,
     bls_key_pop: BlsKeyWithPoP,
@@ -162,14 +162,14 @@ pub fn __verify_each_bls_key(
 /// - User Presence and User Verification flags
 /// - P-256 signature verification over
 ///   `sha256(authenticatorData || sha256(clientDataJSON))`
-pub fn __verify_passkey_pop(
+pub fn verify_passkey_pop(
     env: &Env,
     challenge: BytesN<32>,
     passkey_sig: PasskeyWithPoP,
 ) -> Result<(), WalletError> {
     let expected_rpid_hash = read_rpid_hash(env)?;
 
-    __validate_passkey_assertion_data(
+    validate_passkey_assertion_data(
         env,
         challenge,
         expected_rpid_hash,
@@ -189,7 +189,7 @@ pub fn __verify_passkey_pop(
     Ok(())
 }
 
-pub fn __validate_bls_key_set(env: &Env, keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
+pub fn validate_bls_key_set(env: &Env, keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
     if keys.len() < MIN_BLS_KEYS {
         return Err(WalletError::InsufficientKeys);
     }
@@ -212,7 +212,7 @@ pub fn __validate_bls_key_set(env: &Env, keys: Vec<BytesN<96>>) -> Result<(), Wa
         }
     }
 
-    __validate_bls_agg(env, keys)?;
+    validate_bls_agg(env, keys)?;
 
     Ok(())
 }

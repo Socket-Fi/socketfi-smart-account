@@ -3,7 +3,7 @@ use socketfi_shared::fee_types::FeeDecision;
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{vec, Address, Env, IntoVal, Symbol, Val};
 
-use crate::{data::PasskeySignature, invocation_auth::__fee_deep_auth};
+use crate::{data::PasskeySignature, invocation_auth::fee_deep_auth};
 
 enum FeeMode {
     ChargeCurrentFee,
@@ -88,7 +88,7 @@ pub fn handle_transaction_fee(
             //
             // This must authorize the actual fee-asset amount that the fee manager
             // will transfer from the wallet.
-            __fee_deep_auth(env, data.clone().fee_asset, total_fee);
+            fee_deep_auth(env, data.clone().fee_asset, total_fee);
 
             let _: Val = env.invoke_contract(
                 &fee_manager,

@@ -17,7 +17,7 @@ It checks:
 
 ## Important Security Boundary
 
-`__validate_passkey_assertion_data` does **not** verify the passkey signature.
+`validate_passkey_assertion_data` does **not** verify the passkey signature.
 
 Signature verification must be performed separately using the digest:
 

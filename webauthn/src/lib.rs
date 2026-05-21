@@ -21,7 +21,7 @@ pub const MAX_CLIENT_DATA_JSON_LEN: u32 = 4096;
 ///
 /// Returns the encoded challenge and original client data for downstream digest
 /// construction.
-fn __verify_webauthn_client_data(
+fn verify_webauthn_client_data(
     env: &Env,
     challenge: BytesN<32>,
     client_data_json: Bytes,
@@ -54,7 +54,7 @@ fn __verify_webauthn_client_data(
 ///
 /// This function assumes `authenticator_data` contains at least 33 bytes:
 /// 32 bytes RP ID hash followed by the flags byte.
-fn __verify_authenticator_data(
+fn verify_authenticator_data(
     expected_rpid_hash: BytesN<32>,
     authenticator_data: &Bytes,
 ) -> Result<(), WalletError> {
@@ -94,16 +94,16 @@ fn __verify_authenticator_data(
 /// - User Verification (UV)
 ///
 /// This function does not verify the passkey signature itself.
-pub fn __validate_passkey_assertion_data(
+pub fn validate_passkey_assertion_data(
     env: &Env,
     challenge: BytesN<32>,
     expected_rpid_hash: BytesN<32>,
     authenticator_data: Bytes,
     client_data_json: Bytes,
 ) -> Result<(), WalletError> {
-    __verify_webauthn_client_data(env, challenge, client_data_json)?;
+    verify_webauthn_client_data(env, challenge, client_data_json)?;
 
-    __verify_authenticator_data(expected_rpid_hash, &authenticator_data)?;
+    verify_authenticator_data(expected_rpid_hash, &authenticator_data)?;
 
     Ok(())
 }

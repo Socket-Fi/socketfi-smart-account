@@ -33,7 +33,7 @@ fn require_args_len(args: &Vec<Val>, expected: u32) -> Result<(), WalletError> {
 ///   previously approved allowances and are bounded by approval.
 /// - Limits are enforced per invocation only (not cumulative usage).
 
-pub fn __validate_limit(
+pub fn validate_limit(
     e: &Env,
     asset: Address,
     func: Symbol,
@@ -118,7 +118,7 @@ pub fn dapp_invoke_auth(e: &Env, auth_vec: Vec<Map<String, Val>>) -> Result<(), 
             return Err(WalletError::InvalidInvokeFunction);
         };
 
-        __validate_limit(e, contract_id.clone(), func.clone(), args.clone())?;
+        validate_limit(e, contract_id.clone(), func.clone(), args.clone())?;
 
         // Build one deep auth entry authorizing the current contract
         // to perform the described downstream contract invocation.
@@ -148,7 +148,7 @@ pub fn dapp_invoke_auth(e: &Env, auth_vec: Vec<Map<String, Val>>) -> Result<(), 
 /// - Assumes fee manager configuration exists.
 /// - Current implementation uses `unwrap()` when reading the fee manager,
 ///   so missing configuration would panic.
-pub fn __fee_deep_auth(e: &Env, tx_asset: Address, total_fee: i128) {
+pub fn fee_deep_auth(e: &Env, tx_asset: Address, total_fee: i128) {
     // Resolve the configured fee manager address as the fee recipient.
     let to = read_fee_manager(&e).unwrap();
 

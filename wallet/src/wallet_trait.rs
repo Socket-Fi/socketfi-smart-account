@@ -14,8 +14,7 @@ pub trait WalletTrait {
         social_router: Address,
         fee_manager: Address,
         factory: Address,
-    ) -> Result<(), WalletError> ;
-    
+    ) -> Result<(), WalletError>;
 
     // owner/account settings
     fn set_external_wallet(

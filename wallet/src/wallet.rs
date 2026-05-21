@@ -1,9 +1,9 @@
 use crate::{
-    auth::{__owner_require_auth, compute_tx_nonce},
+    auth::{compute_tx_nonce, owner_require_auth},
     constructor::init_constructor,
     data::{AccessSettings, AuthContext, PasskeySignature},
     fee_handler::handle_transaction_fee,
-    invocation_auth::{__validate_limit, dapp_invoke_auth},
+    invocation_auth::{dapp_invoke_auth, validate_limit},
     state::{is_initialized, read_owner, read_passkey, write_owner},
     wallet_trait::WalletTrait,
 };
@@ -92,7 +92,7 @@ impl WalletTrait for Wallet {
             auth,
         )?;
 
-        __owner_require_auth(env.clone(), challenge, passkey_sig)?;
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
         write_owner(&env, &external_wallet);
 
         Ok(())
@@ -125,7 +125,7 @@ impl WalletTrait for Wallet {
             auth,
         )?;
 
-        __owner_require_auth(env.clone(), challenge, passkey_sig)?;
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
         if limit < 0 {
             return Err(WalletError::InvalidLimit);
@@ -157,7 +157,7 @@ impl WalletTrait for Wallet {
         let args: Vec<Val> = vec![&env, asset.clone().into_val(&env), limit.into_val(&env)];
         let challenge = compute_tx_nonce(&env, String::from_str(&env, "set_limit"), args, auth)?;
 
-        __owner_require_auth(env.clone(), challenge, passkey_sig)?;
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
         if limit < 0 {
             return Err(WalletError::InvalidLimit);
@@ -228,7 +228,7 @@ impl WalletTrait for Wallet {
             amount.into_val(&env),
         ];
         let challenge = compute_tx_nonce(&env, String::from_str(&env, "withdraw"), args, auth)?;
-        __owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
+        owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
         handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
 
@@ -264,7 +264,7 @@ impl WalletTrait for Wallet {
         ];
         let challenge = compute_tx_nonce(&env, String::from_str(&env, "approve"), args, auth)?;
 
-        __owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
+        owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
         if amount < 0 {
             return Err(WalletError::InvalidAmount);
@@ -338,7 +338,7 @@ impl WalletTrait for Wallet {
         // Validate the top-level call in case the wallet is directly invoking
         // a gated token operation such as transfer, approve, or burn.
         if let Some(a) = args.clone() {
-            __validate_limit(&env, contract_id.clone(), func.clone(), a)?;
+            validate_limit(&env, contract_id.clone(), func.clone(), a)?;
         }
 
         // Build the signed payload from the exact invocation intent.
@@ -367,7 +367,7 @@ impl WalletTrait for Wallet {
 
         // Verify wallet owner/passkey authorization before granting any
         // current-contract deep auth.
-        __owner_require_auth(env.clone(), challenge, passkey_sig)?;
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
         // Validate and register deep auth entries after owner auth succeeds.
         //
@@ -547,7 +547,7 @@ impl WalletTrait for Wallet {
         let args: Vec<Val> = vec![&env, wasm.clone().into_val(&env)];
         let challenge = compute_tx_nonce(&env, String::from_str(&env, "upgrade"), args, auth)?;
 
-        __owner_require_auth(env.clone(), challenge, passkey_sig)?;
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
         // Upgrade this wallet to the factory-approved wasm.
         env.deployer().update_current_contract_wasm(wasm);

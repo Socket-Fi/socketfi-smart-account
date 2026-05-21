@@ -1,4 +1,4 @@
-use socketfi_webauthn::{__validate_passkey_assertion_data, wallet_error::WalletError};
+use socketfi_webauthn::{validate_passkey_assertion_data, wallet_error::WalletError};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
@@ -19,7 +19,7 @@ use socketfi_shared::{
 // Ensures externally signed wallet authorizations are short-lived.
 // The caller supplies `valid_until_ledger` as part of the signed payload,
 // but the contract bounds it to prevent long-lived replayable signatures.
-pub fn __validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), WalletError> {
+pub fn validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), WalletError> {
     let current = env.ledger().sequence();
 
     if valid_until_ledger <= current {
@@ -62,7 +62,7 @@ pub fn compute_tx_nonce(
     args: Vec<Val>,
     auth: AuthContext,
 ) -> Result<BytesN<32>, WalletError> {
-    __validate_auth_window(env, auth.valid_until_ledger)?;
+    validate_auth_window(env, auth.valid_until_ledger)?;
 
     let mut payload = Bytes::new(env);
 
@@ -98,14 +98,14 @@ pub fn compute_tx_nonce(
 ///   to the expected challenge and RP ID.
 /// - `WalletError` if validation or signature verification fails.
 
-pub fn __verify_passkey(
+pub fn verify_passkey(
     env: &Env,
     challenge: BytesN<32>,
     passkey_sig: PasskeySignature,
 ) -> Result<(), WalletError> {
     let expected_rpid_hash = read_rpid_hash(env);
 
-    __validate_passkey_assertion_data(
+    validate_passkey_assertion_data(
         env,
         challenge,
         expected_rpid_hash,
@@ -136,7 +136,7 @@ pub fn __verify_passkey(
 /// - Updates the nonce only after a successful verification.
 /// - Current implementation assumes the aggregated public key exists and
 ///   uses `unwrap()`, so missing key material would panic.
-pub fn __verify_bls_key(
+pub fn verify_bls_key(
     env: &Env,
     payload: BytesN<32>,
     tx_signature: BytesN<192>,
@@ -173,14 +173,14 @@ pub fn __verify_bls_key(
 /// - If no signature is provided, the stored owner address must authorize directly.
 /// - Current implementation assumes an owner is configured in the direct auth path
 ///   and uses `unwrap()`, so missing owner state would panic.
-pub fn __owner_require_auth(
+pub fn owner_require_auth(
     env: Env,
     challenge: BytesN<32>,
     passkey_sig: Option<PasskeySignature>,
 ) -> Result<(), WalletError> {
     if let Some(signature) = passkey_sig {
         // Signature-based authorization path using aggregated BLS verification.
-        __verify_passkey(&env, challenge, signature)?;
+        verify_passkey(&env, challenge, signature)?;
     } else {
         // Direct owner authorization path using the stored external owner address.
         let owner = read_owner(&env).unwrap();
@@ -190,11 +190,11 @@ pub fn __owner_require_auth(
     Ok(())
 }
 
-pub fn __authorize_recovery(
+pub fn authorize_recovery(
     env: Env,
     payload: BytesN<32>,
     agg_bls_sig: BytesN<192>,
 ) -> Result<(), WalletError> {
-    __verify_bls_key(&env, payload, agg_bls_sig)?;
+    verify_bls_key(&env, payload, agg_bls_sig)?;
     Ok(())
 }
