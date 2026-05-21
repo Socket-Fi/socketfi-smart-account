@@ -7,11 +7,35 @@ use soroban_sdk::{
 };
 
 use crate::{
-    data::{DataKey, PasskeySignature},
+    data::{AuthContext, PasskeySignature},
     state::read_passkey,
     state::{read_agg_bls_key, read_owner, read_rpid_hash},
 };
-use socketfi_shared::{bls::g1_group_gen_point, constants::DST};
+use socketfi_shared::{
+    bls::g1_group_gen_point,
+    constants::{DST, MAX_AUTH_WINDOW},
+};
+
+// Ensures externally signed wallet authorizations are short-lived.
+// The caller supplies `valid_until_ledger` as part of the signed payload,
+// but the contract bounds it to prevent long-lived replayable signatures.
+pub fn __validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), WalletError> {
+    let current = env.ledger().sequence();
+
+    if valid_until_ledger <= current {
+        return Err(WalletError::InvalidLedgerWindow);
+    }
+
+    let max_allowed = current
+        .checked_add(MAX_AUTH_WINDOW)
+        .ok_or(WalletError::InvalidLedgerWindow)?;
+
+    if valid_until_ledger > max_allowed {
+        return Err(WalletError::WindowTooLarge);
+    }
+
+    Ok(())
+}
 
 /// Return the domain separation tag as contract bytes.
 ///
@@ -20,34 +44,6 @@ use socketfi_shared::{bls::g1_group_gen_point, constants::DST};
 /// - Used during message hashing in signature verification.
 fn read_dst_bytes(e: &Env) -> Bytes {
     Bytes::from_slice(&e, DST.as_bytes())
-}
-
-/// Read the current replay-protection nonce from instance storage.
-///
-/// Notes:
-/// - Returns the stored nonce when present.
-/// - Returns `0` if nonce has not yet been initialized.
-pub fn read_nonce(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::Nonce).unwrap_or(0)
-}
-
-/// Write the replay-protection nonce to instance storage.
-///
-/// Notes:
-/// - Replaces any previously stored nonce value.
-pub fn write_nonce(env: &Env, nonce: u64) {
-    env.storage().instance().set(&DataKey::Nonce, &nonce);
-}
-
-/// Increment the replay-protection nonce by one.
-///
-/// Notes:
-/// - Reads the current nonce, increments it, and stores the new value.
-/// - Panics if `checked_add(1)` overflows.
-pub fn update_nonce(env: &Env) {
-    let nonce = read_nonce(env);
-    let n = nonce.checked_add(1).expect("invalid nonce");
-    env.storage().instance().set(&DataKey::Nonce, &n);
 }
 
 /// Compute the wallet authorization payload hash.
@@ -60,20 +56,47 @@ pub fn update_nonce(env: &Env) {
 ///   - encoded argument list
 /// - Returns the SHA-256 hash of the serialized payload.
 /// - Used as the message payload for owner/BLS authorization flows.
-pub fn compute_tx_nonce(env: &Env, func: String, args: Vec<Val>) -> BytesN<32> {
-    let wallet_nonce = read_nonce(env);
-    let mut payload = wallet_nonce.to_xdr(env);
+pub fn compute_tx_nonce(
+    env: &Env,
+    func: String,
+    args: Vec<Val>,
+    auth: AuthContext,
+) -> Result<BytesN<32>, WalletError> {
+    __validate_auth_window(env, auth.valid_until_ledger)?;
 
+    let mut payload = Bytes::new(env);
+
+    payload.append(&Bytes::from_slice(env, b"SOCKETFI_WALLET_AUTH_V1"));
     payload.append(&env.current_contract_address().to_xdr(env));
+
+    payload.append(&auth.nonce.to_xdr(env));
+    payload.append(&auth.valid_until_ledger.to_xdr(env));
+
     payload.append(&func.to_xdr(env));
 
-    for b in args.iter() {
-        let x = b.to_xdr(env);
-        payload.append(&x);
+    for arg in args.iter() {
+        payload.append(&arg.to_xdr(env));
     }
 
-    BytesN::from(env.crypto().sha256(&payload))
+    Ok(env.crypto().sha256(&payload).into())
 }
+
+/// Verifies a WebAuthn passkey assertion against the wallet's registered passkey.
+///
+/// Validation flow:
+/// 1. Load and validate the expected RP ID hash.
+/// 2. Validate assertion structure and challenge binding
+///    (challenge, origin, type, RP ID hash, flags, etc.).
+/// 3. Compute SHA-256 over `client_data_json`.
+/// 4. Construct the WebAuthn signed payload:
+///      authenticatorData || SHA256(clientDataJSON)
+/// 5. Hash the payload and verify the P-256 signature against the
+///    registered wallet passkey.
+///
+/// Returns:
+/// - `Ok(())` if the assertion is cryptographically valid and bound
+///   to the expected challenge and RP ID.
+/// - `WalletError` if validation or signature verification fails.
 
 pub fn __verify_passkey(
     env: &Env,
@@ -100,7 +123,6 @@ pub fn __verify_passkey(
     env.crypto()
         .secp256r1_verify(&passkey, &digest, &passkey_sig.signature);
 
-    update_nonce(env);
     Ok(())
 }
 
@@ -141,8 +163,6 @@ pub fn __verify_bls_key(
         return Err(WalletError::InvalidSignature);
     }
 
-    // Advance the nonce only after successful signature verification.
-    update_nonce(env);
     Ok(())
 }
 

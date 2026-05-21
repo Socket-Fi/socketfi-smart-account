@@ -16,6 +16,13 @@ pub struct PasskeySignature {
 
 #[derive(Clone)]
 #[contracttype]
+pub struct AuthContext {
+    pub nonce: BytesN<32>,
+    pub valid_until_ledger: u32,
+}
+
+#[derive(Clone)]
+#[contracttype]
 pub enum DataKey {
     FactoryContract,
     Owner,

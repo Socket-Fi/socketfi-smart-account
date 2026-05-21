@@ -62,13 +62,11 @@ pub fn __validate_limit(
 
     let amount: i128 = i128::from_val(e, &args.get_unchecked(index));
 
-    if amount <= 0 {
+    if amount < 0 {
         return Err(WalletError::InvalidAmount);
     }
 
     let limit = read_limit(e, asset);
-
-    // handle_transaction_fee(e, asset, amount, passkey_sig)?;
 
     if amount > limit {
         return Err(WalletError::ExceedMaxAllowance);

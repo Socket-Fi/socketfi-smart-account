@@ -32,4 +32,6 @@ pub enum WalletError {
     InvalidInvokeArgs = 2115,
     WalletVersionNotFound = 2125,
     MaxDeferredFeeExceeded = 2135,
+    InvalidLedgerWindow = 2145,
+    WindowTooLarge = 2155,
 }

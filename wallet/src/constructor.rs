@@ -2,10 +2,7 @@ use socketfi_shared::tokens::{write_allowance_expiration, write_default_spend_li
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Vec};
 
-use crate::{
-    auth::write_nonce,
-    state::{write_agg_bls_key, write_passkey, write_rpid_hash},
-};
+use crate::state::{write_agg_bls_key, write_passkey, write_rpid_hash};
 use socketfi_access::access::{
     write_factory, write_fee_manager, write_registry, write_social_router,
 };
@@ -46,9 +43,6 @@ pub fn init_constructor(
 
     // Set the initial allowance expiration configuration used for approvals.
     write_allowance_expiration(&env, 17_000);
-
-    // Initialize the replay-protection nonce at zero.
-    write_nonce(&env, 0);
 
     Ok(())
 }
