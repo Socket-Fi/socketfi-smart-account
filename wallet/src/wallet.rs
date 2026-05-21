@@ -243,12 +243,22 @@ impl WalletTrait for Wallet {
             }
         }
 
+        let cur_allowance = read_allowance(&env, &asset, &spender);
+
+        // Enforce zero-reset:
+        // non-zero -> non-zero is not allowed directly.
+        // User must first set allowance to 0, then set the new value.
+        if cur_allowance > 0 && amount > 0 {
+            return Err(WalletError::AllowanceMustBeReset);
+        }
+
         let args: Vec<Val> = vec![
             &env,
             asset.clone().into_val(&env),
             spender.clone().into_val(&env),
             amount.into_val(&env),
         ];
+
         let challenge = compute_tx_nonce(
             &env,
             String::from_str(&env, "approve"),
@@ -259,8 +269,11 @@ impl WalletTrait for Wallet {
         owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
         handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
+
         write_approve(&env, &asset, &spender, &amount);
+
         increment_nonce(&env);
+
         Ok(())
     }
 

@@ -34,4 +34,5 @@ pub enum WalletError {
     MaxDeferredFeeExceeded = 2135,
     InvalidLedgerWindow = 2145,
     WindowTooLarge = 2155,
+    AllowanceMustBeReset = 2301,
 }
