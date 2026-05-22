@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env};
 
 use crate::data::DataKey;
 use crate::errors::ContractError;
-use socketfi_shared::{constants::RATE_PRECISION, tokens::read_is_supported_asset};
+use socketfi_shared::{constants::PRECISION, tokens::read_is_supported_asset};
 
 // ---------------------------------------------------------------------
 // Base Fee (USDC-denominated)
@@ -73,7 +73,7 @@ pub fn write_deferred_fee(e: &Env, user: &Address, amount: i128) {
 // ---------------------------------------------------------------------
 // NOTE:
 // - Stored in persistent storage per asset
-// - RATE_PRECISION is used for fixed-point math
+// - PRECISION is used for fixed-point math
 // - Requires asset to already be registered as supported
 
 pub fn read_fee_asset_rate(e: &Env, asset: &Address) -> Result<i128, ContractError> {
@@ -110,11 +110,11 @@ pub fn delete_fee_asset_rate(e: &Env, asset: &Address) {
 /// Converts a base fee into the selected asset denomination.
 ///
 /// Formula:
-/// ceil(total_fee * asset_rate * 10^decimals / RATE_PRECISION²)
+/// ceil(total_fee * asset_rate * 10^decimals / PRECISION²)
 ///
 /// Note:
-/// - `total_fee` uses RATE_PRECISION fixed-point precision.
-/// - `asset_rate` uses RATE_PRECISION fixed-point precision.
+/// - `total_fee` uses PRECISION fixed-point precision.
+/// - `asset_rate` uses PRECISION fixed-point precision.
 /// - `decimals` is the target asset decimal precision.
 /// - Rounds up to avoid under-collecting protocol fees.
 
@@ -123,7 +123,7 @@ pub fn convert_base_to_asset(
     asset_rate: i128,
     decimals: u32,
 ) -> Result<i128, ContractError> {
-    if total_fee < 0 || asset_rate <= 0 || RATE_PRECISION <= 0 {
+    if total_fee < 0 || asset_rate <= 0 || PRECISION <= 0 {
         return Err(ContractError::InvalidAmount);
     }
 
@@ -140,8 +140,8 @@ pub fn convert_base_to_asset(
         .and_then(|v| v.checked_mul(token_precision))
         .ok_or(ContractError::InvalidAmount)?;
 
-    let denominator = RATE_PRECISION
-        .checked_mul(RATE_PRECISION)
+    let denominator = PRECISION
+        .checked_mul(PRECISION)
         .ok_or(ContractError::InvalidAmount)?;
 
     numerator

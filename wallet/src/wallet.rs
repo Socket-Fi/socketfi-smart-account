@@ -8,16 +8,20 @@ use crate::{
     wallet_trait::WalletTrait,
 };
 use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
-use socketfi_shared::tokens::{
-    read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset, write_approve,
-    write_limit,
+use socketfi_shared::{
+    constants::PRECISION,
+    tokens::{
+        read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset,
+        write_approve, write_limit,
+    },
 };
 use socketfi_webauthn::{
     key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
 };
 use soroban_sdk::{
-    contract, contractimpl, vec, Address, BytesN, Env, IntoVal, Map, String, Symbol, Val, Vec,
+    contract, contractimpl, token, vec, Address, BytesN, Env, IntoVal, Map, String, Symbol, Val,
+    Vec,
 };
 
 #[contract]
@@ -144,9 +148,20 @@ impl WalletTrait for Wallet {
             valid_until_ledger,
         )?;
 
+        let token = token::Client::new(&env, &asset);
+        let decimals = token.decimals();
+        let token_precision = 10_i128
+            .checked_pow(decimals)
+            .ok_or(WalletError::InvalidAmount)?;
+
+        let normalized_limit = limit
+            .checked_mul(token_precision)
+            .ok_or(WalletError::InvalidAmount)?
+            / PRECISION;
+
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
-        write_limit(&env, asset, limit);
+        write_limit(&env, asset, normalized_limit);
         increment_nonce(&env);
         Ok(())
     }
