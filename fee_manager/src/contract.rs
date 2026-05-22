@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, Vec};
+use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::contract_trait::FeeManagerTrait;
 use crate::errors::ContractError;
@@ -208,10 +208,11 @@ impl FeeManagerTrait for FeeManager {
 
         if read_is_supported_asset(&e, tx_asset.clone()) {
             let rate = read_fee_asset_rate(&e, &tx_asset)?;
+            let decimals: u32 = token::Client::new(&e, &tx_asset).decimals();
 
-            let total_fee_in_asset = convert_base_to_asset(total_fee_base, rate)?;
-            let added_in_asset = convert_base_to_asset(base_fee, rate)?;
-            let deferred_in_asset = convert_base_to_asset(deferred_fee, rate)?;
+            let total_fee_in_asset = convert_base_to_asset(total_fee_base, rate, decimals)?;
+            let added_in_asset = convert_base_to_asset(base_fee, rate, decimals)?;
+            let deferred_in_asset = convert_base_to_asset(deferred_fee, rate, decimals)?;
 
             let total_tx_amount = tx_amount
                 .checked_add(total_fee_in_asset)
@@ -291,9 +292,13 @@ impl FeeManagerTrait for FeeManager {
         if updated_base_fee == 0 {
             return Ok(());
         }
+        let decimals: u32 = token::Client::new(&e, &fee_asset).decimals();
 
-        let total_fee =
-            convert_base_to_asset(updated_base_fee, read_fee_asset_rate(&e, &fee_asset)?)?;
+        let total_fee = convert_base_to_asset(
+            updated_base_fee,
+            read_fee_asset_rate(&e, &fee_asset)?,
+            decimals,
+        )?;
 
         take_asset(&e, &payer, &fee_asset, total_fee);
 

@@ -107,26 +107,23 @@ pub fn delete_fee_asset_rate(e: &Env, asset: &Address) {
         .remove(&DataKey::FeeAssetRate(asset.clone()));
 }
 
-// ---------------------------------------------------------------------
-// Conversion Logic (Base → Asset)
-// ---------------------------------------------------------------------
-// NOTE:
-// - Uses fixed-point math with RATE_PRECISION
-// - Prevents overflow via checked operations
-// - Formula:
-//      asset_amount = (base_amount * rate) / RATE_PRECISION
-//
-// EXAMPLE:
-// - base_fee = 1_000_000 (1 USDC with 6 decimals)
-// - rate = 2_000_000 (2x)
-// → result = 2_000_000 (2 units in asset)
-//
-// CRITICAL:
-// - RATE_PRECISION must match how rates are defined globally
-// - All assets must use consistent decimal assumptions
+/// Converts a base fee into the selected asset denomination.
+///
+/// Formula:
+/// ceil(total_fee * asset_rate * 10^decimals / RATE_PRECISION²)
+///
+/// Note:
+/// - `total_fee` uses RATE_PRECISION fixed-point precision.
+/// - `asset_rate` uses RATE_PRECISION fixed-point precision.
+/// - `decimals` is the target asset decimal precision.
+/// - Rounds up to avoid under-collecting protocol fees.
 
-pub fn convert_base_to_asset(total_fee: i128, asset_rate: i128) -> Result<i128, ContractError> {
-    if total_fee < 0 || asset_rate <= 0 {
+pub fn convert_base_to_asset(
+    total_fee: i128,
+    asset_rate: i128,
+    decimals: u32,
+) -> Result<i128, ContractError> {
+    if total_fee < 0 || asset_rate <= 0 || RATE_PRECISION <= 0 {
         return Err(ContractError::InvalidAmount);
     }
 
@@ -134,12 +131,21 @@ pub fn convert_base_to_asset(total_fee: i128, asset_rate: i128) -> Result<i128, 
         return Ok(0);
     }
 
+    let token_precision = 10_i128
+        .checked_pow(decimals)
+        .ok_or(ContractError::InvalidAmount)?;
+
     let numerator = total_fee
         .checked_mul(asset_rate)
+        .and_then(|v| v.checked_mul(token_precision))
+        .ok_or(ContractError::InvalidAmount)?;
+
+    let denominator = RATE_PRECISION
+        .checked_mul(RATE_PRECISION)
         .ok_or(ContractError::InvalidAmount)?;
 
     numerator
-        .checked_add(RATE_PRECISION - 1)
-        .and_then(|v| v.checked_div(RATE_PRECISION))
+        .checked_add(denominator - 1)
+        .and_then(|v| v.checked_div(denominator))
         .ok_or(ContractError::InvalidAmount)
 }
