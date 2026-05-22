@@ -3,6 +3,7 @@
 use soroban_sdk::{Bytes, BytesN, Env};
 use wallet_error::WalletError;
 use webauth_helper::{base64url_encode_no_pad, json_string_field_equals};
+pub mod key_types;
 pub mod wallet_error;
 pub mod webauth_helper;
 

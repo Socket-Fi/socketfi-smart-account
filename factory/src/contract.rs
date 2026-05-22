@@ -1,9 +1,8 @@
 use crate::{
     contract_trait::FactoryTrait,
-    data::{BlsKeyWithPoP, PasskeyWithPoP},
     wallet_factory::{
-        extract_bls_keys, read_creation_pop_challenge, validate_bls_key_set, verify_each_bls_key,
-        verify_passkey_pop, write_create_wallet, write_creation_nonce_used, write_rpid_hash,
+        read_creation_pop_challenge, write_create_wallet, write_creation_nonce_used,
+        write_rpid_hash,
     },
 };
 use socketfi_access::access::{
@@ -11,7 +10,10 @@ use socketfi_access::access::{
     write_fee_manager, write_registry, write_social_router,
 };
 use socketfi_shared::events;
-use socketfi_webauthn::wallet_error::WalletError;
+use socketfi_webauthn::{
+    key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
+    wallet_error::WalletError,
+};
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Symbol, Vec};
 use upgrade::{
     cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
@@ -88,30 +90,23 @@ impl FactoryTrait for FactoryContract {
     /// - emits wallet creation event
     fn create_wallet(
         e: Env,
-        passkey_pop: PasskeyWithPoP,
+        passkey: BytesN<65>,
+        passkey_sig: PasskeySignature,
         bls_keys_pop: Vec<BlsKeyWithPoP>,
         nonce: BytesN<32>,
         network: Symbol,
     ) -> Result<Address, WalletError> {
         let challenge = read_creation_pop_challenge(&e, &nonce, &network)?;
-        verify_passkey_pop(&e, challenge.clone(), passkey_pop.clone())?;
-        let bls_keys = extract_bls_keys(&e, bls_keys_pop.clone());
-
-        validate_bls_key_set(&e, bls_keys.clone())?;
-
-        for bls_key_pop in bls_keys_pop.iter() {
-            verify_each_bls_key(&e, challenge.clone(), bls_key_pop)?;
-        }
-
         let wallet_address =
-            write_create_wallet(&e, &passkey_pop.key, bls_keys.clone(), challenge)?;
+            write_create_wallet(&e, &passkey, passkey_sig, bls_keys_pop.clone(), challenge)?;
+        // write_create_wallet(&e, &passkey_pop.key, bls_keys.clone(), challenge)?;
 
         write_creation_nonce_used(&e, &nonce);
 
         events::WalletCreationEvent {
             wallet: wallet_address.clone(),
-            passkey: passkey_pop.key,
-            bls_keys: bls_keys,
+            passkey,
+            bls_keys: extract_bls_keys(&e, bls_keys_pop),
         }
         .publish(&e);
 

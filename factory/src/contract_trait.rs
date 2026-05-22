@@ -1,8 +1,9 @@
-use socketfi_webauthn::wallet_error::WalletError;
+use socketfi_webauthn::{
+    key_types::{BlsKeyWithPoP, PasskeySignature},
+    wallet_error::WalletError,
+};
 use soroban_sdk::{Address, BytesN, Env, String, Symbol, Vec};
 use upgrade::errors::UpgradeError;
-
-use crate::data::{BlsKeyWithPoP, PasskeyWithPoP};
 
 /// Public interface for the factory contract.
 ///
@@ -35,7 +36,8 @@ pub trait FactoryTrait {
     /// - Returns deployed wallet address.
     fn create_wallet(
         e: Env,
-        passkey_pop: PasskeyWithPoP,
+        passkey: BytesN<65>,
+        passkey_sig: PasskeySignature,
         bls_keys_pop: Vec<BlsKeyWithPoP>,
         nonce: BytesN<32>,
         network: Symbol,

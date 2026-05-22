@@ -6,17 +6,7 @@ pub fn g1_group_gen_point(env: &Env) -> BytesN<96> {
 }
 
 pub fn is_g1_infinity(key: &BytesN<96>) -> bool {
+    const G1_INFINITY_FLAG: u8 = 0x40;
     let bytes = key.to_array();
-
-    if bytes[0] != 0x40 {
-        return false;
-    }
-
-    for b in bytes.iter().skip(1) {
-        if *b != 0 {
-            return false;
-        }
-    }
-
-    true
+    bytes[0] == G1_INFINITY_FLAG && bytes[1..].iter().all(|b| *b == 0)
 }

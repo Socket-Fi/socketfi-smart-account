@@ -36,15 +36,14 @@ pub fn write_owner(env: &Env, owner: &Address) {
     env.storage().instance().set(&key, owner);
 }
 
-/// Aggregate a list of BLS public keys into one aggregated key and store it.
+/// Aggregate multiple BLS public keys into a single aggregated key.
 ///
 /// Notes:
-/// - Starts with the first key in the provided vector.
-/// - Iteratively adds the remaining keys using BLS G1 point addition.
-/// - Rejects input only when the number of keys exceeds `MAX_BLS_KEYS`.
-/// - Stores the final aggregated public key in persistent storage.
-
-pub fn write_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), WalletError> {
+/// - Combines keys using BLS G1 point addition.
+/// - Assumes keys have already been validated before invocation.
+/// - Returns the aggregated public key.
+/// - Does not write to contract storage.
+pub fn aggregate_bls_keys(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<BytesN<96>, WalletError> {
     let bls = env.crypto().bls12_381();
 
     let mut keypair_1_array = [0u8; 96];
@@ -56,10 +55,6 @@ pub fn write_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), Wal
 
     let n = bls_keys.len();
 
-    if n > MAX_BLS_KEYS {
-        return Err(WalletError::TooManyKeys);
-    }
-
     for i in 1..n {
         let mut keypair_i_array = [0u8; 96];
         bls_keys
@@ -70,9 +65,19 @@ pub fn write_agg_bls_key(env: &Env, bls_keys: Vec<BytesN<96>>) -> Result<(), Wal
         agg_pk = bls.g1_add(&agg_pk, &pk);
     }
 
+    Ok(agg_pk.to_bytes())
+}
+
+/// Compute and persist the aggregated BLS public key.
+///
+/// Notes:
+/// - Aggregates the provided BLS public keys.
+/// - Stores the resulting aggregated key in persistent storage.
+/// - Assumes input validation has already been performed.
+pub fn write_agg_bls_key(env: &Env, bls_agg: BytesN<96>) -> Result<(), WalletError> {
     env.storage()
         .persistent()
-        .set(&DataKey::AggregatedBlsKey, &agg_pk.to_bytes());
+        .set(&DataKey::AggregatedBlsKey, &bls_agg);
 
     Ok(())
 }

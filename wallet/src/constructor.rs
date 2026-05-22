@@ -17,7 +17,7 @@ pub fn init_constructor(
     env: Env,
     passkey: BytesN<65>,
     rpid_hash: BytesN<32>,
-    bls_keys: Vec<BytesN<96>>,
+    bls_agg: BytesN<96>,
     registry: Address,
     social_router: Address,
     fee_manager: Address,
@@ -30,7 +30,7 @@ pub fn init_constructor(
     write_rpid_hash(&env, &rpid_hash);
 
     // Aggregate and store the BLS public keys used for signature verification.
-    write_agg_bls_key(&env, bls_keys)?;
+    write_agg_bls_key(&env, bls_agg)?;
 
     // Store linked contract addresses required by wallet flows.
     write_registry(&env, &registry);

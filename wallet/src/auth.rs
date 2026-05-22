@@ -1,4 +1,6 @@
-use socketfi_webauthn::{validate_passkey_assertion_data, wallet_error::WalletError};
+use socketfi_webauthn::{
+    key_types::PasskeySignature, validate_passkey_assertion_data, wallet_error::WalletError,
+};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
@@ -7,7 +9,7 @@ use soroban_sdk::{
 };
 
 use crate::{
-    data::{DataKey, PasskeySignature},
+    data::DataKey,
     state::read_passkey,
     state::{read_agg_bls_key, read_owner, read_rpid_hash},
 };

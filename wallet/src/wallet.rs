@@ -1,10 +1,10 @@
 use crate::{
     auth::{compute_tx_nonce, increment_nonce, owner_require_auth},
     constructor::init_constructor,
-    data::PasskeySignature,
     fee_handler::handle_transaction_fee,
     invocation_auth::{dapp_invoke_auth, validate_limit},
     state::{is_initialized, read_owner, read_passkey, write_owner},
+    wallet_creation_validation::{validate_verify_bls_key_set_pop, verify_passkey_pop},
     wallet_trait::WalletTrait,
 };
 use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
@@ -12,7 +12,10 @@ use socketfi_shared::tokens::{
     read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset, write_approve,
     write_limit,
 };
-use socketfi_webauthn::wallet_error::WalletError;
+use socketfi_webauthn::{
+    key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
+    wallet_error::WalletError,
+};
 use soroban_sdk::{
     contract, contractimpl, vec, Address, BytesN, Env, IntoVal, Map, String, Symbol, Val, Vec,
 };
@@ -38,9 +41,11 @@ impl WalletTrait for Wallet {
     /// - Reverts if initialization was already completed.
     fn __constructor(
         env: Env,
+        challenge: BytesN<32>,
         passkey: BytesN<65>,
+        passkey_sig: PasskeySignature,
         rpid_hash: BytesN<32>,
-        bls_keys: Vec<BytesN<96>>,
+        bls_keys_pop: Vec<BlsKeyWithPoP>,
         registry: Address,
         social_router: Address,
         fee_manager: Address,
@@ -50,11 +55,21 @@ impl WalletTrait for Wallet {
             return Err(WalletError::AlreadyInitialized);
         }
 
+        verify_passkey_pop(
+            &env,
+            challenge.clone(),
+            passkey.clone(),
+            passkey_sig,
+            rpid_hash.clone(),
+        )?;
+
+        let bls_agg = validate_verify_bls_key_set_pop(&env, challenge, bls_keys_pop)?;
+
         init_constructor(
             env,
             passkey,
             rpid_hash,
-            bls_keys,
+            bls_agg,
             registry,
             social_router,
             fee_manager,

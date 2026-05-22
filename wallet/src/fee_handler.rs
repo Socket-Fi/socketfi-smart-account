@@ -1,9 +1,12 @@
 use socketfi_access::access::read_fee_manager;
 use socketfi_shared::fee_types::FeeDecision;
-use socketfi_webauthn::wallet_error::WalletError;
+use socketfi_webauthn::{
+    key_types::{BlsKeyWithPoP, PasskeySignature},
+    wallet_error::WalletError,
+};
 use soroban_sdk::{vec, Address, Env, IntoVal, Symbol, Val};
 
-use crate::{data::PasskeySignature, invocation_auth::fee_deep_auth};
+use crate::invocation_auth::fee_deep_auth;
 
 enum FeeMode {
     ChargeCurrentFee,

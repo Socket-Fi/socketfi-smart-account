@@ -1,15 +1,18 @@
-use socketfi_webauthn::wallet_error::WalletError;
+use socketfi_webauthn::{
+    key_types::{BlsKeyWithPoP, PasskeySignature},
+    wallet_error::WalletError,
+};
 use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Val, Vec};
-
-use crate::data::PasskeySignature;
 
 pub trait WalletTrait {
     // initialization
     fn __constructor(
         env: Env,
+        challenge: BytesN<32>,
         passkey: BytesN<65>,
+        passkey_sig: PasskeySignature,
         rpid_hash: BytesN<32>,
-        bls_keys: Vec<BytesN<96>>,
+        bls_keys_pop: Vec<BlsKeyWithPoP>,
         registry: Address,
         social_router: Address,
         fee_manager: Address,

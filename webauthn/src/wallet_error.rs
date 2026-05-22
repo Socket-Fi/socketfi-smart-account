@@ -5,6 +5,7 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum WalletError {
     InvalidSignature = 99,
+    InvalidBlsKey = 211,
     AlreadyInitialized = 411,
     ExceedMaxAllowance = 719,
     InvalidLimit = 723,
