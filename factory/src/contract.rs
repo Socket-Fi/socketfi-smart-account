@@ -70,7 +70,7 @@ impl FactoryTrait for FactoryContract {
         init_wallet_wasm_hash(&e, &wasm)?;
 
         // Bootstrap governance by allowing the initial admin to vote.
-        upgrade_add_voter(&e, &admin);
+        upgrade_add_voter(&e, &admin)?;
 
         Ok(())
     }
@@ -267,36 +267,28 @@ impl FactoryTrait for FactoryContract {
         Ok(())
     }
 
-    /// Add a voter to the governance voter set.
-    ///
-    /// Auth:
-    /// - Admin only.
-    ///
-    /// Effects:
-    /// - Grants the address voting rights for future proposals.
-    /// - Emits a voter-added event.
-    fn add_voter(e: Env, voter: Address) {
+    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
         authenticate_admin(&e);
-        upgrade_add_voter(&e, &voter);
+        upgrade_add_voter(&e, &voter)?;
 
         events::AddVoterEvent {
             value: voter.clone(),
         }
         .publish(&e);
+
+        Ok(())
     }
 
-    /// Remove a voter from the governance voter set.
-    ///
-    /// Auth:
-    /// - Admin only.
-    fn remove_voter(e: Env, voter: Address) {
+    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
         authenticate_admin(&e);
-        upgrade_remove_voter(&e, &voter);
+        upgrade_remove_voter(&e, &voter)?;
 
         events::RemoveVoterEvent {
             value: voter.clone(),
         }
         .publish(&e);
+
+        Ok(())
     }
 
     /// Cast a vote for the currently active proposal.

@@ -12,10 +12,12 @@ use crate::storage::{
     write_wallet_wasm_version, DataKey,
 };
 use crate::types::UpgradeType;
-use crate::voters::{read_has_upgrade_passed, read_is_voter, write_add_voter, write_remove_voter};
+use crate::voters::{read_has_upgrade_passed, write_add_voter, write_remove_voter};
 
 use socketfi_shared::{constants::UPGRADE_VOTING_DURATION_SECONDS, events};
 use soroban_sdk::{Address, BytesN, Env, Map, String};
+use storage::{has_active_upgrade_proposal, write_proposal_snapshot};
+use voters::get_voter_info;
 
 // -----------------------------------------------------------------------------
 // Wallet Version Initialization
@@ -44,34 +46,31 @@ pub fn init_wallet_wasm_hash(e: &Env, wallet_version: &BytesN<32>) -> Result<(),
     Ok(())
 }
 
-// -----------------------------------------------------------------------------
-// Upgrade Proposal Creation
-// -----------------------------------------------------------------------------
-// Creates a new pending upgrade proposal.
-//
-// FLOW:
-// 1. Ensures no other proposal is currently active.
-// 2. Computes and stores the voting deadline.
-// 3. Stores the proposed wasm hash + proposal type.
-// 4. Emits proposal event.
-//
-// NOTE:
-// - `proposal_type` determines execution behavior later.
-// - Voting window length is controlled by UPGRADE_VOTING_DURATION_SECONDS.
+// Creates a new upgrade proposal and snapshots governance state.
 //
 // SECURITY:
-// - This helper assumes caller already enforced proposer authorization.
-// - Only one active proposal can exist at a time.
+// - Only one active proposal may exist at a time.
+// - Expired pending proposal state is cleared before creating a new proposal.
+// - The approval threshold and eligible voter set are snapshotted at creation.
+// - Later voter additions/removals only affect future proposals.
 pub fn create_upgrade_proposal(
     e: &Env,
     proposal_type: String,
     wasm_hash: &BytesN<32>,
 ) -> Result<(), UpgradeError> {
-    if get_upgrade_voting_deadline(e) != 0 {
+    if has_active_upgrade_proposal(e) {
         return Err(UpgradeError::AnotherUpgradePending);
     }
 
+    if get_upgrade_voting_deadline(e) != 0 {
+        clear_pending_upgrade_state(e);
+    }
+
+    let (_, approval_threshold, voters) = get_voter_info(e)?;
+
     let deadline = e.ledger().timestamp() + UPGRADE_VOTING_DURATION_SECONDS;
+
+    write_proposal_snapshot(e, approval_threshold, &voters);
     write_upgrade_voting_deadline(e, &deadline);
     write_future_wasm(e, proposal_type, wasm_hash)?;
 
@@ -84,31 +83,15 @@ pub fn create_upgrade_proposal(
     Ok(())
 }
 
-// -----------------------------------------------------------------------------
-// Voting
-// -----------------------------------------------------------------------------
-// Casts a vote for the currently active proposal.
-//
-// REQUIREMENTS:
-// - A proposal must exist.
-// - Voting must still be open.
-// - Voter must be on the approved voter list.
-// - Voter may only vote once.
-// - Provided wasm hash must match the active proposal.
-//
-// NOTE:
-// - This function records the vote in persistent storage.
-// - Vote uniqueness is enforced through the VotedList map.
-//
-// IMPORTANT:
-// - `read_future_wasm(e).unwrap()` assumes proposal state is internally consistent
-//   once a non-zero voting deadline exists.
-// - If state corruption is possible elsewhere, that unwrap would become fragile.
+// Casts a vote for the active proposal.
 //
 // SECURITY:
-// - This helper checks voter eligibility.
-// - If caller also expects signature/auth, that should be enforced outside or
-//   before this helper is invoked.
+// - Voting is only allowed before the proposal deadline.
+// - Voter eligibility is checked against the proposal voter snapshot,
+//   not the current mutable voter list.
+// - This prevents voter additions/removals from affecting active proposals.
+// - Each snapshot voter may vote only once.
+// - The submitted wasm hash must match the active proposal hash.
 pub fn write_cast_vote(
     e: &Env,
     voter: &Address,
@@ -124,11 +107,13 @@ pub fn write_cast_vote(
         return Err(UpgradeError::VotingClosed);
     }
 
-    if !read_is_voter(e, voter.clone()) {
+    let proposal_voters = crate::storage::read_proposal_voters(e)?;
+
+    if !proposal_voters.contains_key(voter.clone()) {
         return Err(UpgradeError::NotInVotersList);
     }
 
-    let future_wasm_hash = read_future_wasm(e).unwrap();
+    let future_wasm_hash = read_future_wasm(e).ok_or(UpgradeError::NoPendingUpgradeAction)?;
     if future_wasm_hash != *wasm_hash {
         return Err(UpgradeError::InvalidUpgradeHash);
     }
@@ -152,31 +137,12 @@ pub fn write_cast_vote(
     Ok(())
 }
 
-// -----------------------------------------------------------------------------
-// Proposal Execution
-// -----------------------------------------------------------------------------
-// Finalizes the active proposal after the voting deadline has passed.
+// Executes a passed proposal after the voting deadline.
 //
-// BEHAVIOR BY PROPOSAL TYPE:
-// - Upgrade:
-//     clears pending state, then upgrades current contract WASM.
-// - WalletVersion:
-//     writes approved wallet version hash, then clears pending state.
-//
-// REQUIREMENTS:
-// - Proposal must exist.
-// - Voting period must be over.
-// - Proposal must meet passing threshold.
-//
-// IMPORTANT ORDERING:
-// - For `Upgrade`, pending state is cleared before `update_current_contract_wasm`
-//   so stale proposal state is not left behind if the WASM update succeeds.
-// - For `WalletVersion`, the version write happens before clearing proposal
-//   state because the write may fail and should not silently discard proposal state.
-//
-// NOTE:
-// - `read_future_wasm(...).unwrap()` and `read_proposal_type(...).unwrap()` assume
-//   proposal state is valid whenever a deadline is present.
+// SECURITY:
+// - Uses the snapshotted approval threshold and voter set.
+// - Clears proposal state after successful execution.
+// - Proposal data is read with checked errors instead of unwraps.
 pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
     let deadline = get_upgrade_voting_deadline(e);
 
@@ -188,8 +154,9 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
         return Err(UpgradeError::VotingStillOngoing);
     }
 
-    let new_wasm_hash = read_future_wasm(e).unwrap();
-    let proposal_type: UpgradeType = read_proposal_type(e).unwrap();
+    let new_wasm_hash = read_future_wasm(e).ok_or(UpgradeError::NoPendingUpgradeAction)?;
+    let proposal_type: UpgradeType =
+        read_proposal_type(e).ok_or(UpgradeError::NoPendingUpgradeAction)?;
     let (_, has_passed) = read_has_upgrade_passed(e)?;
 
     if !has_passed {
@@ -221,24 +188,14 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
     Ok(new_wasm_hash)
 }
 
-// -----------------------------------------------------------------------------
-// Proposal Cancellation
-// -----------------------------------------------------------------------------
-// Cancels the active proposal and clears all pending proposal state.
-//
-// NOTE:
-// - Intended for authorized administrative/governance cancellation flow.
-// - Emits cancellation event using the currently pending wasm hash.
-//
-// IMPORTANT:
-// - `read_future_wasm(e).unwrap()` assumes a valid pending proposal exists when
-//   this helper is called.
-// - This function does not itself verify that a proposal exists before unwrap.
+// Cancels the pending proposal and clears all proposal state.
 //
 // SECURITY:
-// - Caller should enforce authorization before invoking this helper.
+// - Caller must enforce authorization before invoking this helper.
+// - Returns NoPendingUpgradeAction if no proposal wasm hash exists.
+// - Clears votes, deadline, proposal type, threshold, and voter snapshot.
 pub fn cancel_upgrade_proposal(e: &Env) -> Result<(), UpgradeError> {
-    let wasm = read_future_wasm(e).unwrap();
+    let wasm = read_future_wasm(e).ok_or(UpgradeError::NoPendingUpgradeAction)?;
     clear_pending_upgrade_state(e);
 
     events::UpgradeCancelledEvent { wasm: wasm.clone() }.publish(&e);
@@ -264,23 +221,32 @@ pub fn read_wallet_wasm_hash(e: &Env) -> Option<BytesN<32>> {
     read_wallet_wasm_version(e)
 }
 
-// -----------------------------------------------------------------------------
-// Voter Management
-// -----------------------------------------------------------------------------
-// Adds a new voter to the approved voter set.
+// Updates the current governance voter set.
 //
-// NOTE:
-// - This helper does not enforce authorization by itself.
-// - Intended to be called only from protected admin/governance entrypoints.
-pub fn upgrade_add_voter(e: &Env, voter: &Address) {
+// SECURITY:
+// - Blocked while an upgrade proposal is active.
+// - Changes only affect future proposals because active proposals use
+//   their snapshotted voter set and threshold..
+pub fn upgrade_add_voter(e: &Env, voter: &Address) -> Result<(), UpgradeError> {
+    if has_active_upgrade_proposal(e) {
+        return Err(UpgradeError::AnotherUpgradePending);
+    }
+
     write_add_voter(e, voter);
+    Ok(())
 }
 
-// Removes a voter from the approved voter set.
+// Updates the current governance voter set.
 //
-// NOTE:
-// - This helper does not enforce authorization by itself.
-// - Intended to be called only from protected admin/governance entrypoints.
-pub fn upgrade_remove_voter(e: &Env, voter: &Address) {
+// SECURITY:
+// - Blocked while an upgrade proposal is active.
+// - Changes only affect future proposals because active proposals use
+//   their snapshotted voter set and threshold.
+pub fn upgrade_remove_voter(e: &Env, voter: &Address) -> Result<(), UpgradeError> {
+    if has_active_upgrade_proposal(e) {
+        return Err(UpgradeError::AnotherUpgradePending);
+    }
+
     write_remove_voter(e, voter);
+    Ok(())
 }

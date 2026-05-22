@@ -143,7 +143,10 @@ pub trait SocialPaymentsTrait {
     ) -> Result<(), UpgradeError>;
 
     /// Add governance voter.
-    fn add_voter(e: Env, voter: Address);
+    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
+
+    /// Remove governance voter.
+    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
 
     /// Cast vote on active proposal.
     ///
@@ -156,7 +159,4 @@ pub trait SocialPaymentsTrait {
 
     /// Cancel active proposal.
     fn cancel_proposal(e: Env) -> Result<(), UpgradeError>;
-
-    /// Upgrade contract wasm directly.
-    fn upgrade(e: Env, new_wasm_hash: BytesN<32>);
 }

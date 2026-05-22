@@ -27,7 +27,7 @@ use socketfi_shared::{
 };
 use upgrade::{
     cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
-    upgrade_add_voter, write_cast_vote,
+    upgrade_add_voter, upgrade_remove_voter, write_cast_vote,
 };
 
 /// Social payments router contract.
@@ -343,14 +343,33 @@ impl SocialPaymentsTrait for SocialPayments {
     ///
     /// Notes:
     /// - Admin only.
-    fn add_voter(e: Env, voter: Address) {
+    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
         authenticate_admin(&e);
-        upgrade_add_voter(&e, &voter);
+        upgrade_add_voter(&e, &voter)?;
 
         events::AddVoterEvent {
             value: voter.clone(),
         }
         .publish(&e);
+
+        Ok(())
+    }
+
+    /// Remove governance voter.
+    ///
+    /// Notes:
+    /// - Admin only.
+
+    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
+        authenticate_admin(&e);
+        upgrade_remove_voter(&e, &voter)?;
+
+        events::RemoveVoterEvent {
+            value: voter.clone(),
+        }
+        .publish(&e);
+
+        Ok(())
     }
 
     /// Cast vote on active proposal.
@@ -371,14 +390,5 @@ impl SocialPaymentsTrait for SocialPayments {
         authenticate_admin(&e);
         cancel_upgrade_proposal(&e)?;
         Ok(())
-    }
-
-    /// Upgrade contract wasm directly.
-    ///
-    /// Notes:
-    /// - Admin only.
-    fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
-        authenticate_admin(&e);
-        e.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 }

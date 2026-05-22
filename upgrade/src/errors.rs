@@ -15,4 +15,5 @@ pub enum UpgradeError {
     AlreadyVoted = 1013,
     NotInVotersList = 1025,
     DidNotPass = 1027,
+    NotEnoughVoters = 1037,
 }
