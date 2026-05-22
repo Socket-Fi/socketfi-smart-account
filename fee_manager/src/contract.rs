@@ -1,3 +1,5 @@
+use socketfi_shared::events;
+use socketfi_shared::tokens::send_asset;
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::contract_trait::FeeManagerTrait;
@@ -348,6 +350,51 @@ impl FeeManagerTrait for FeeManager {
         write_deferred_fee(&e, &wallet, updated_base_fee);
 
         Ok(updated_base_fee)
+    }
+
+    // -------------------------------------------------------------------------
+    // Fee Treasury Management
+    // -------------------------------------------------------------------------
+
+    /// Withdraw collected protocol fees from the fee manager.
+    ///
+    /// - Allows the admin to transfer accumulated fee assets out of the contract.
+    ///
+    /// Validation:
+    /// - Caller must be admin.
+    /// - Asset must be a supported fee asset.
+    /// - Amount must be positive.
+    /// - Withdrawal cannot exceed the contract's asset balance.
+    ///
+    /// Emits:
+    /// - WithdrawFeeEvent(asset, amount, to)
+    fn withdraw_collected_fees(
+        e: Env,
+        asset: Address,
+        amount: i128,
+        to: Address,
+    ) -> Result<(), ContractError> {
+        authenticate_admin(&e);
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        if !read_is_supported_asset(&e, asset.clone()) {
+            return Err(ContractError::UnsupportedAsset);
+        }
+
+        let fee_balance = token::Client::new(&e, &asset).balance(&e.current_contract_address());
+
+        if amount > fee_balance {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        send_asset(&e, &to, &asset, amount);
+
+        events::WithdrawFeeEvent { asset, amount, to }.publish(&e);
+
+        Ok(())
     }
 
     // -------------------------------------------------------------------------

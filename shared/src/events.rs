@@ -56,3 +56,9 @@ pub struct UpdateSocialRouterEvent {
 pub struct UpdateFeeManagerEvent {
     pub value: Address,
 }
+#[contractevent(topics = ["Withdraw", "Fee"])]
+pub struct WithdrawFeeEvent {
+    pub asset: Address,
+    pub amount: i128,
+    pub to: Address,
+}

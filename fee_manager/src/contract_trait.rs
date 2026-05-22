@@ -72,6 +72,17 @@ pub trait FeeManagerTrait {
     ) -> Result<i128, ContractError>;
 
     // -------------------------------------------------------------------------
+    // Fee Treasury Management
+    // -------------------------------------------------------------------------
+
+    fn withdraw_collected_fees(
+        e: Env,
+        asset: Address,
+        amount: i128,
+        to: Address,
+    ) -> Result<(), ContractError>;
+
+    // -------------------------------------------------------------------------
     // Contract Upgrade
     // -------------------------------------------------------------------------
     fn upgrade(e: Env, new_wasm_hash: BytesN<32>);
