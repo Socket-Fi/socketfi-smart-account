@@ -1,3 +1,4 @@
+use socketfi_shared::dependencies_types::ProtocolDependencies;
 use socketfi_webauthn::{
     key_types::{BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
@@ -89,6 +90,8 @@ pub trait FactoryTrait {
     /// Notes:
     /// - Affects future wallet deployments.
     fn update_fee_manager(e: Env, fee_manager: Address);
+
+    fn get_protocol_dependencies(env: Env) -> Result<ProtocolDependencies, WalletError>;
 
     // upgrade governance
 

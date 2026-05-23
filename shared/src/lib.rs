@@ -1,6 +1,7 @@
 #![no_std]
 pub mod bls;
 pub mod constants;
+pub mod dependencies_types;
 pub mod events;
 pub mod fee_types;
 pub mod registry_errors;

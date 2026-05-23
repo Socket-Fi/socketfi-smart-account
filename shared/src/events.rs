@@ -62,3 +62,16 @@ pub struct WithdrawFeeEvent {
     pub amount: i128,
     pub to: Address,
 }
+
+#[contractevent(topics = ["Sync", "ProtocolDependencies"])]
+pub struct SyncProtocolDependenciesEvent {
+    pub wallet: Address,
+
+    pub old_registry: Address,
+    pub old_fee_manager: Address,
+    pub old_social_router: Address,
+
+    pub new_registry: Address,
+    pub new_fee_manager: Address,
+    pub new_social_router: Address,
+}

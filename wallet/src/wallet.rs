@@ -7,16 +7,21 @@ use crate::{
     wallet_creation_validation::{validate_verify_bls_key_set_pop, verify_passkey_pop},
     wallet_trait::WalletTrait,
 };
-use socketfi_access::access::{read_factory, read_fee_manager, read_registry, read_social_router};
+use socketfi_access::access::{
+    read_factory, read_fee_manager, read_registry, read_social_router, write_fee_manager,
+    write_registry, write_social_router,
+};
 use socketfi_shared::{
     constants::PRECISION,
+    dependencies_types::ProtocolDependencies,
+    events,
     tokens::{
         read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset,
         write_approve, write_limit,
     },
 };
 use socketfi_webauthn::{
-    key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
+    key_types::{BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
 };
 use soroban_sdk::{
@@ -531,6 +536,61 @@ impl WalletTrait for Wallet {
     /// - Read-only helper.
     fn get_factory(env: Env) -> Option<Address> {
         read_factory(&env)
+    }
+
+    /// Synchronizes wallet protocol dependencies from the currently configured factory.
+    ///
+    /// SECURITY:
+    /// - Dependencies are not accepted from caller input.
+    /// - Reads approved protocol addresses directly from the trusted factory.
+    /// - Keeps existing wallets aligned with current protocol configuration.
+    /// - Synchronization is authenticated and nonce protected.
+    /// - Updates only local dependency references and does not modify factory state.
+    fn sync_protocol_dependencies(
+        env: Env,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError> {
+        let factory = read_factory(&env).ok_or(WalletError::FactoryNotFound)?;
+
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "sync_protocol_dependencies"),
+            vec![&env],
+            valid_until_ledger,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
+
+        let dependencies: ProtocolDependencies = env.invoke_contract(
+            &factory,
+            &Symbol::new(&env, "get_protocol_dependencies"),
+            vec![&env],
+        );
+
+        let old_registry = read_registry(&env).ok_or(WalletError::RegistryNotFound)?;
+        let old_fee_manager = read_fee_manager(&env).ok_or(WalletError::FeeManagerNotFound)?;
+        let old_social_router =
+            read_social_router(&env).ok_or(WalletError::SocialRouterNotFound)?;
+
+        write_registry(&env, &dependencies.registry);
+        write_social_router(&env, &dependencies.social_router);
+        write_fee_manager(&env, &dependencies.fee_manager);
+
+        events::SyncProtocolDependenciesEvent {
+            wallet: env.current_contract_address(),
+
+            old_registry,
+            old_fee_manager,
+            old_social_router,
+            new_registry: dependencies.registry,
+            new_fee_manager: dependencies.fee_manager,
+            new_social_router: dependencies.social_router,
+        }
+        .publish(&env);
+
+        increment_nonce(&env);
+        Ok(())
     }
 
     // ---------------------------------------------------------------------

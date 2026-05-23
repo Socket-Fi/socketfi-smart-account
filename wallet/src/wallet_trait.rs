@@ -92,6 +92,11 @@ pub trait WalletTrait {
     fn get_fee_manager(env: Env) -> Option<Address>;
     fn get_social_router(env: Env) -> Option<Address>;
     fn get_factory(env: Env) -> Option<Address>;
+    fn sync_protocol_dependencies(
+        env: Env,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError>;
 
     // upgrade
     fn upgrade(

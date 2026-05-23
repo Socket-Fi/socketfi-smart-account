@@ -6,10 +6,10 @@ use crate::{
     },
 };
 use socketfi_access::access::{
-    authenticate_admin, has_admin, read_admin, read_fee_manager, read_registry, write_admin,
-    write_fee_manager, write_registry, write_social_router,
+    authenticate_admin, has_admin, read_admin, read_fee_manager, read_registry, read_social_router,
+    write_admin, write_fee_manager, write_registry, write_social_router,
 };
-use socketfi_shared::events;
+use socketfi_shared::{dependencies_types::ProtocolDependencies, events};
 use socketfi_webauthn::{
     key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
@@ -232,6 +232,26 @@ impl FactoryTrait for FactoryContract {
             value: fee_manager.clone(),
         }
         .publish(&e);
+    }
+
+    /// Returns the currently configured protocol dependency contracts.
+///
+/// SECURITY:
+/// - Serves as the canonical source of approved protocol dependencies.
+/// - Returns only factory-configured addresses and does not accept caller input.
+/// - Fails if any required dependency is missing to prevent partial configuration.
+///
+/// Returns:
+/// - Registry contract address.
+/// - Fee manager contract address.
+/// - Social router contract address.
+    fn get_protocol_dependencies(env: Env) -> Result<ProtocolDependencies, WalletError> {
+        Ok(ProtocolDependencies {
+            registry: read_registry(&env).ok_or(WalletError::RegistryNotFound)?,
+            social_router: read_social_router(&env).ok_or(WalletError::SocialRouterNotFound)?,
+
+            fee_manager: read_fee_manager(&env).ok_or(WalletError::FeeManagerNotFound)?,
+        })
     }
 
     // upgrade governance

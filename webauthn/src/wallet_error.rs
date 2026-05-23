@@ -28,6 +28,8 @@ pub enum WalletError {
     RpidNotFound = 2085,
     FactoryNotFound = 2087,
     FeeManagerNotFound = 2089,
+    RegistryNotFound = 2091,
+    SocialRouterNotFound = 2093,
     InvalidNetwork = 2095,
     InvalidAuthenticatorData = 2105,
     InvalidInvokeArgs = 2115,
