@@ -93,6 +93,7 @@ pub fn write_create_wallet(
     passkey_sig: PasskeySignature,
     bls_keys_pop: Vec<BlsKeyWithPoP>,
     challenge: BytesN<32>,
+    external_wallet: Option<Address>,
 ) -> Result<Address, WalletError> {
     // Load the approved wallet wasm version for deployment.
     let wasm = read_wallet_wasm_hash(&e).unwrap();
@@ -117,6 +118,7 @@ pub fn write_create_wallet(
                 read_social_router(e).unwrap(),
                 read_fee_manager(e).unwrap(),
                 e.current_contract_address(),
+                external_wallet,
             ),
         );
 

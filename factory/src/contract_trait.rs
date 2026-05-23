@@ -42,6 +42,7 @@ pub trait FactoryTrait {
         bls_keys_pop: Vec<BlsKeyWithPoP>,
         nonce: BytesN<32>,
         network: Symbol,
+        external_wallet: Option<Address>,
     ) -> Result<Address, WalletError>;
 
     // read-only getters

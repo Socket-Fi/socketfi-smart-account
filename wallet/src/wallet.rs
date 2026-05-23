@@ -59,6 +59,7 @@ impl WalletTrait for Wallet {
         social_router: Address,
         fee_manager: Address,
         factory: Address,
+        external_wallet: Option<Address>,
     ) -> Result<(), WalletError> {
         if is_initialized(&env) {
             return Err(WalletError::AlreadyInitialized);
@@ -83,6 +84,7 @@ impl WalletTrait for Wallet {
             social_router,
             fee_manager,
             factory,
+            external_wallet,
         )?;
 
         Ok(())

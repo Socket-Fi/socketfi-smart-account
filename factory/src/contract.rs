@@ -95,11 +95,17 @@ impl FactoryTrait for FactoryContract {
         bls_keys_pop: Vec<BlsKeyWithPoP>,
         nonce: BytesN<32>,
         network: Symbol,
+        external_wallet: Option<Address>,
     ) -> Result<Address, WalletError> {
         let challenge = read_creation_pop_challenge(&e, &nonce, &network)?;
-        let wallet_address =
-            write_create_wallet(&e, &passkey, passkey_sig, bls_keys_pop.clone(), challenge)?;
-        // write_create_wallet(&e, &passkey_pop.key, bls_keys.clone(), challenge)?;
+        let wallet_address = write_create_wallet(
+            &e,
+            &passkey,
+            passkey_sig,
+            bls_keys_pop.clone(),
+            challenge,
+            external_wallet,
+        )?;
 
         write_creation_nonce_used(&e, &nonce);
 
@@ -235,16 +241,16 @@ impl FactoryTrait for FactoryContract {
     }
 
     /// Returns the currently configured protocol dependency contracts.
-///
-/// SECURITY:
-/// - Serves as the canonical source of approved protocol dependencies.
-/// - Returns only factory-configured addresses and does not accept caller input.
-/// - Fails if any required dependency is missing to prevent partial configuration.
-///
-/// Returns:
-/// - Registry contract address.
-/// - Fee manager contract address.
-/// - Social router contract address.
+    ///
+    /// SECURITY:
+    /// - Serves as the canonical source of approved protocol dependencies.
+    /// - Returns only factory-configured addresses and does not accept caller input.
+    /// - Fails if any required dependency is missing to prevent partial configuration.
+    ///
+    /// Returns:
+    /// - Registry contract address.
+    /// - Fee manager contract address.
+    /// - Social router contract address.
     fn get_protocol_dependencies(env: Env) -> Result<ProtocolDependencies, WalletError> {
         Ok(ProtocolDependencies {
             registry: read_registry(&env).ok_or(WalletError::RegistryNotFound)?,

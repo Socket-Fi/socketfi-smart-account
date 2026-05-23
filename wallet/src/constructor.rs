@@ -2,7 +2,7 @@ use socketfi_shared::tokens::write_allowance_expiration;
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{Address, BytesN, Env, Vec};
 
-use crate::state::{write_agg_bls_key, write_passkey, write_rpid_hash};
+use crate::state::{write_agg_bls_key, write_owner, write_passkey, write_rpid_hash};
 use socketfi_access::access::{
     write_factory, write_fee_manager, write_registry, write_social_router,
 };
@@ -22,6 +22,7 @@ pub fn init_constructor(
     social_router: Address,
     fee_manager: Address,
     factory: Address,
+    external_wallet: Option<Address>,
 ) -> Result<(), WalletError> {
     // Store the passkey payload used by the wallet auth model.
     write_passkey(&env, passkey);
@@ -37,6 +38,10 @@ pub fn init_constructor(
     write_fee_manager(&env, &fee_manager);
     write_social_router(&env, &social_router);
     write_factory(&env, &factory);
+
+    if let Some(owner) = external_wallet {
+        write_owner(&env, &owner)
+    }
 
     // Set the initial allowance expiration configuration used for approvals.
     write_allowance_expiration(&env, 17_000);
