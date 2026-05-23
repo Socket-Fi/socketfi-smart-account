@@ -5,8 +5,12 @@ use soroban_sdk::{
 use crate::{
     contract_trait::RegistryTrait,
     registry::{
-        read_passkey_wallet_map, read_userid_wallet_map, write_passkey_wallet_map,
-        write_userid_wallet_map,
+        read_passkey_wallet_map, read_userid_wallet_map, remove_userid_wallet_map,
+        write_passkey_wallet_map, write_userid_wallet_map,
+    },
+    registry_managers::{
+        read_is_registry_manager, require_registry_manager, write_add_registry_manager,
+        write_remove_registry_manager,
     },
     validators::{
         read_is_validator, read_threshold, read_validators, write_add_validator,
@@ -53,7 +57,67 @@ impl RegistryTrait for Registry {
         Ok(())
     }
 
+    /// Add registry manager.
+    ///
+    /// Authorization:
+    /// - Admin only.
+    ///
+    /// Security model:
+    /// - Registry managers are recovery operators.
+    /// - They may unlink stale or compromised identity bindings.
+    /// - They cannot create, overwrite, or rebind identity mappings.
+    fn add_manager(e: Env, manager: Address) -> Result<(), RegistryError> {
+        authenticate_admin(&e);
+
+        if read_is_registry_manager(&e, manager.clone()) {
+            return Ok(());
+        }
+
+        write_add_registry_manager(&e, manager);
+
+        Ok(())
+    }
+
+    /// Remove registry manager.
+    ///
+    /// Authorization:
+    /// - Admin only.
+    ///
+    /// Security model:
+    /// - Revokes the manager's ability to perform future recovery unlink actions.
+    /// - Existing identity bindings are not changed.
+    fn remove_manager(e: Env, manager: Address) -> Result<(), RegistryError> {
+        authenticate_admin(&e);
+
+        if !read_is_registry_manager(&e, manager.clone()) {
+            return Ok(());
+        }
+
+        write_remove_registry_manager(&e, manager);
+
+        Ok(())
+    }
+
     // identity core
+
+    /// Set passkey -> wallet mapping.
+    ///
+    /// Notes:
+    /// - Factory only.
+    /// - Used for wallet lookup by passkey.
+    fn set_passkey_wallet_map(
+        e: Env,
+        passkey: BytesN<65>,
+        wallet: Address,
+    ) -> Result<(), RegistryError> {
+        let factory = read_factory(&e).ok_or(RegistryError::FactoryNotSet)?;
+        factory.require_auth();
+        write_passkey_wallet_map(&e, passkey.clone(), wallet.clone())?;
+
+        events::PasskeyMapEvent { wallet, passkey }.publish(&e);
+
+        Ok(())
+    }
 
     /// Verify identity and bind wallet.
     ///
@@ -61,7 +125,7 @@ impl RegistryTrait for Registry {
     /// - Requires wallet authorization.
     /// - Validates platform, user id, and validator signatures.
     /// - Writes `(platform, user_id) -> wallet` mapping on success.
-    fn verify_identity_binding(
+    fn set_id_wallet_map(
         e: Env,
         wallet: Address,
         user_id: String,
@@ -110,23 +174,92 @@ impl RegistryTrait for Registry {
                 .ed25519_verify(&s.validator, &message, &s.signature);
         }
 
-        write_userid_wallet_map(&e, String::from_str(&e, platform.as_str()), user_id, wallet)?;
+        let platform_validated = String::from_str(&e, platform.as_str());
+        write_userid_wallet_map(
+            &e,
+            platform_validated.clone(),
+            user_id.clone(),
+            wallet.clone(),
+        )?;
+
+        events::AddIdentityMapEvent {
+            wallet,
+            id: user_id,
+            platform: platform_validated,
+        }
+        .publish(&e);
+        Ok(())
+    }
+
+    /// Unlink identity binding by the currently bound wallet.
+    ///
+    /// Authorization:
+    /// - The wallet currently bound to `(platform, user_id)` must authorize.
+    ///
+    /// Security model:
+    /// - Allows a wallet owner to voluntarily remove their social identity binding.
+    /// - After unlinking, rebinding must go through the normal validator-based link flow.
+
+    fn remove_id_wallet_map(
+        e: Env,
+        user_id: String,
+        platform_str: String,
+    ) -> Result<(), RegistryError> {
+        let platform = SocialPlatform::is_platform_supported(platform_str)?;
+        let platform_validated = String::from_str(&e, platform.as_str());
+        validate_userid(user_id.clone())?;
+
+        let wallet = read_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?
+            .ok_or(RegistryError::IdentityNotFound)?;
+
+        wallet.require_auth();
+
+        remove_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?;
+        events::RemoveIdentityMapEvent {
+            wallet,
+            id: user_id,
+            platform: platform_validated,
+        }
+        .publish(&e);
 
         Ok(())
     }
 
-    /// Set passkey -> wallet mapping.
+    /// Recovery unlink by registry manager.
     ///
-    /// Notes:
-    /// - Factory only.
-    /// - Used for wallet lookup by passkey.
-    fn set_passkey_wallet_map(
+    /// Authorization:
+    /// - Caller must be an approved registry manager.
+    ///
+    /// Security model:
+    /// - Used when the currently bound wallet is compromised, lost, or abandoned.
+    /// - Manager can only remove the stale identity mapping.
+    /// - Manager cannot rebind the identity to a new wallet.
+    /// - After unlinking, the user must complete the normal identity verification flow again.
+    fn manager_remove_id_wallet_map(
         e: Env,
-        passkey: BytesN<77>,
-        wallet: Address,
+        user_id: String,
+        platform_str: String,
+        manager: Address,
     ) -> Result<(), RegistryError> {
-        read_factory(&e).unwrap().require_auth();
-        write_passkey_wallet_map(&e, passkey, wallet)
+        require_registry_manager(&e, manager)?;
+
+        let platform = SocialPlatform::is_platform_supported(platform_str)?;
+        let platform_validated = String::from_str(&e, platform.as_str());
+
+        validate_userid(user_id.clone())?;
+        let wallet = read_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?
+            .ok_or(RegistryError::IdentityNotFound)?;
+
+        remove_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?;
+
+        events::RemoveIdentityMapEvent {
+            wallet,
+            id: user_id,
+            platform: platform_validated,
+        }
+        .publish(&e);
+
+        Ok(())
     }
 
     // validator management
@@ -176,7 +309,7 @@ impl RegistryTrait for Registry {
     /// - Returns `None` if not found.
     fn get_wallet_by_passkey(
         e: Env,
-        passkey: BytesN<77>,
+        passkey: BytesN<65>,
     ) -> Result<Option<Address>, RegistryError> {
         read_passkey_wallet_map(&e, passkey)
     }

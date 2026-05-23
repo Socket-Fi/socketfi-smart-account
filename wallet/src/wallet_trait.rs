@@ -1,3 +1,4 @@
+use socketfi_shared::registry_types::ValidatorSignature;
 use socketfi_webauthn::{
     key_types::{BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
@@ -32,6 +33,23 @@ pub trait WalletTrait {
         env: Env,
         asset: Address,
         limit: i128,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError>;
+
+    fn add_id_wallet_map(
+        env: Env,
+        user_id: String,
+        platform_str: String,
+        signatures: Vec<ValidatorSignature>,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError>;
+
+    fn remove_id_wallet_map(
+        env: Env,
+        user_id: String,
+        platform_str: String,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError>;

@@ -1,6 +1,7 @@
-use soroban_sdk::contracttype;
+use soroban_sdk::{contracttype, Address};
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
     Validators,
+    RegistryManager(Address),
 }

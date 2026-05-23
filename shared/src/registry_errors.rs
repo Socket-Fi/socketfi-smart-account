@@ -22,4 +22,7 @@ pub enum RegistryError {
     UpperNotAllowed = 743,
     SpacesNotAllowed = 744,
     MaxLengthExceeded = 745,
+    IdentityNotFound = 4001,
+    NotRegistryManager = 4051,
+    FactoryNotSet = 4101,
 }

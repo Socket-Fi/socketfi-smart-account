@@ -18,6 +18,10 @@ pub trait RegistryTrait {
     /// - Intended to run once.
     fn __constructor(e: Env, admin: Address) -> Result<(), UpgradeError>;
 
+    fn add_manager(e: Env, manager: Address) -> Result<(), RegistryError>;
+
+    fn remove_manager(e: Env, manager: Address) -> Result<(), RegistryError>;
+
     // identity core
 
     /// Verify identity binding and store the wallet mapping.
@@ -25,13 +29,6 @@ pub trait RegistryTrait {
     /// Notes:
     /// - Verifies validator signatures for the provided identity payload.
     /// - Binds wallet to `(platform, user_id)` after successful verification.
-    fn verify_identity_binding(
-        e: Env,
-        wallet: Address,
-        user_id: String,
-        platform_str: String,
-        signatures: Vec<ValidatorSignature>,
-    ) -> Result<(), RegistryError>;
 
     /// Store passkey-to-wallet mapping.
     ///
@@ -39,10 +36,30 @@ pub trait RegistryTrait {
     /// - Used to resolve wallet by passkey.
     fn set_passkey_wallet_map(
         e: Env,
-        passkey: BytesN<77>,
+        passkey: BytesN<65>,
         wallet: Address,
     ) -> Result<(), RegistryError>;
 
+    fn set_id_wallet_map(
+        e: Env,
+        wallet: Address,
+        user_id: String,
+        platform_str: String,
+        signatures: Vec<ValidatorSignature>,
+    ) -> Result<(), RegistryError>;
+
+    fn remove_id_wallet_map(
+        e: Env,
+        user_id: String,
+        platform_str: String,
+    ) -> Result<(), RegistryError>;
+
+    fn manager_remove_id_wallet_map(
+        e: Env,
+        user_id: String,
+        platform_str: String,
+        manager: Address,
+    ) -> Result<(), RegistryError>;
     // validator management
 
     /// Add a validator public key.
@@ -76,7 +93,7 @@ pub trait RegistryTrait {
     ///
     /// Notes:
     /// - Returns `None` when no mapping exists.
-    fn get_wallet_by_passkey(e: Env, passkey: BytesN<77>)
+    fn get_wallet_by_passkey(e: Env, passkey: BytesN<65>)
         -> Result<Option<Address>, RegistryError>;
 
     // admin/config

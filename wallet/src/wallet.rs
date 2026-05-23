@@ -15,6 +15,7 @@ use socketfi_shared::{
     constants::PRECISION,
     dependencies_types::ProtocolDependencies,
     events,
+    registry_types::ValidatorSignature,
     tokens::{
         read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset,
         write_approve, write_limit,
@@ -120,6 +121,96 @@ impl WalletTrait for Wallet {
 
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
         write_owner(&env, &external_wallet);
+        increment_nonce(&env);
+
+        Ok(())
+    }
+
+    /// Links a `(platform, user_id)` identity to this wallet in the registry.
+    ///
+    /// Requires wallet authorization before forwarding the request to the registry.
+    /// The mapping is used to associate an external identity (e.g. X, Discord,
+    /// Telegram) with the current wallet address.
+    ///
+    /// Validation of platform support, signature threshold, and identity ownership
+    /// is enforced by the registry contract.
+    fn add_id_wallet_map(
+        env: Env,
+        user_id: String,
+        platform_str: String,
+        signatures: Vec<ValidatorSignature>,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError> {
+        let args: Vec<Val> = vec![
+            &env,
+            user_id.clone().to_val(),
+            platform_str.clone().to_val(),
+        ];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "add_id_wallet_map"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
+
+        let registry = read_registry(&env).ok_or(WalletError::RegistryNotFound)?;
+
+        let _: Val = env.invoke_contract(
+            &registry,
+            &Symbol::new(&env, "set_id_wallet_map"),
+            vec![
+                &env,
+                env.current_contract_address().into_val(&env),
+                user_id.into_val(&env),
+                platform_str.into_val(&env),
+                signatures.into_val(&env),
+            ],
+        );
+
+        increment_nonce(&env);
+
+        Ok(())
+    }
+
+    /// Removes an existing `(platform, user_id)` identity mapping from the registry.
+    ///
+    /// Requires wallet authorization before forwarding the request to the registry.
+    /// This operation detaches the external identity from the current wallet
+    /// address.
+    ///
+    /// Registry-level validation ensures only valid and authorized removals occur.
+    fn remove_id_wallet_map(
+        env: Env,
+        user_id: String,
+        platform_str: String,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError> {
+        let args: Vec<Val> = vec![
+            &env,
+            user_id.clone().to_val(),
+            platform_str.clone().to_val(),
+        ];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "remove_id_wallet_map"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
+
+        let registry = read_registry(&env).ok_or(WalletError::RegistryNotFound)?;
+
+        let _: Val = env.invoke_contract(
+            &registry,
+            &Symbol::new(&env, "remove_id_wallet_map"),
+            vec![&env, user_id.into_val(&env), platform_str.into_val(&env)],
+        );
+
         increment_nonce(&env);
 
         Ok(())

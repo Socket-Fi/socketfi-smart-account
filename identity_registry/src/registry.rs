@@ -54,6 +54,21 @@ pub fn write_userid_wallet_map(
     Ok(())
 }
 
+pub fn remove_userid_wallet_map(
+    e: &Env,
+    platform: String,
+    user_id: String,
+) -> Result<(), RegistryError> {
+    let key = userid_wallet_key(e, platform, user_id)?;
+
+    if !e.storage().persistent().has(&key) {
+        return Err(RegistryError::IdentityNotFound);
+    }
+
+    e.storage().persistent().remove(&key);
+    Ok(())
+}
+
 /// Writes a new `passkey -> wallet` mapping.
 ///
 /// Write policy:
@@ -69,7 +84,7 @@ pub fn write_userid_wallet_map(
 /// - Persistent storage is used to ensure passkey bindings remain durable.
 pub fn write_passkey_wallet_map(
     e: &Env,
-    passkey: BytesN<77>,
+    passkey: BytesN<65>,
     wallet: Address,
 ) -> Result<(), RegistryError> {
     let key = passkey_wallet_key(e, passkey)?;
@@ -98,7 +113,7 @@ pub fn write_passkey_wallet_map(
 /// - Returning `Option<Address>` avoids forcing error handling for simple existence checks.
 pub fn read_passkey_wallet_map(
     e: &Env,
-    passkey: BytesN<77>,
+    passkey: BytesN<65>,
 ) -> Result<Option<Address>, RegistryError> {
     let key = passkey_wallet_key(e, passkey)?;
 

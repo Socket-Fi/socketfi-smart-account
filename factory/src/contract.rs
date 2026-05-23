@@ -14,7 +14,9 @@ use socketfi_webauthn::{
     key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
 };
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, vec, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
+};
 use upgrade::{
     cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
     init_wallet_wasm_hash, read_wallet_wasm_hash, upgrade_add_voter, upgrade_remove_voter,
@@ -106,6 +108,14 @@ impl FactoryTrait for FactoryContract {
             challenge,
             external_wallet,
         )?;
+
+        let registry = read_registry(&e).ok_or(WalletError::RegistryNotFound)?;
+
+        let _: Val = e.invoke_contract(
+            &registry,
+            &Symbol::new(&e, "set_passkey_wallet_map"),
+            vec![&e, passkey.into_val(&e), wallet_address.into_val(&e)],
+        );
 
         write_creation_nonce_used(&e, &nonce);
 

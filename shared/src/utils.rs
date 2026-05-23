@@ -171,7 +171,7 @@ pub fn userid_wallet_key(
 ///
 /// DESIGN:
 /// - Uses a distinct domain separator: `"passkey_wallet"`
-/// - Uses raw `BytesN<77>` passkey bytes
+/// - Uses raw `BytesN<65>` passkey bytes
 /// - Uses `0x00` separator for structured encoding
 ///
 /// SECURITY:
@@ -181,7 +181,7 @@ pub fn userid_wallet_key(
 ///
 /// COMPATIBILITY:
 /// - Any change to encoding or domain separation will break existing mappings.
-pub fn passkey_wallet_key(e: &Env, passkey: BytesN<77>) -> Result<DataKey, RegistryError> {
+pub fn passkey_wallet_key(e: &Env, passkey: BytesN<65>) -> Result<DataKey, RegistryError> {
     let mut salt = Bytes::new(e);
 
     salt.append(&String::from_str(e, "passkey_wallet").into());

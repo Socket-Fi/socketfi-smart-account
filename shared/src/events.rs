@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, Address, BytesN, Vec};
+use soroban_sdk::{contractevent, Address, BytesN, String, Vec};
 
 #[contractevent(topics = ["Upgrade", "ProposalCreated"])]
 pub struct UpgradeProposalEvent {
@@ -74,4 +74,21 @@ pub struct SyncProtocolDependenciesEvent {
     pub new_registry: Address,
     pub new_fee_manager: Address,
     pub new_social_router: Address,
+}
+#[contractevent(topics = ["Registry", "PasskeyMap"])]
+pub struct PasskeyMapEvent {
+    pub wallet: Address,
+    pub passkey: BytesN<65>,
+}
+#[contractevent(topics = ["Registry", "IdentityMapAdded"])]
+pub struct AddIdentityMapEvent {
+    pub wallet: Address,
+    pub id: String,
+    pub platform: String,
+}
+#[contractevent(topics = ["Registry", "IdentityMapRemoved"])]
+pub struct RemoveIdentityMapEvent {
+    pub wallet: Address,
+    pub id: String,
+    pub platform: String,
 }
