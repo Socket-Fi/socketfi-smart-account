@@ -4,10 +4,7 @@ use soroban_sdk::{
 
 use crate::{
     contract_trait::RegistryTrait,
-    registry::{
-        read_passkey_wallet_map, read_userid_wallet_map, remove_userid_wallet_map,
-        write_passkey_wallet_map, write_userid_wallet_map,
-    },
+    registry::{read_userid_wallet_map, remove_userid_wallet_map, write_userid_wallet_map},
     registry_managers::{
         read_is_registry_manager, require_registry_manager, write_add_registry_manager,
         write_remove_registry_manager,
@@ -17,7 +14,7 @@ use crate::{
         write_remove_validator,
     },
 };
-use socketfi_access::access::{authenticate_admin, has_admin, read_factory, write_admin};
+use socketfi_access::access::{authenticate_admin, has_admin, write_admin};
 use socketfi_shared::{
     events,
     registry_errors::RegistryError,
@@ -99,25 +96,6 @@ impl RegistryTrait for Registry {
     }
 
     // identity core
-
-    /// Set passkey -> wallet mapping.
-    ///
-    /// Notes:
-    /// - Factory only.
-    /// - Used for wallet lookup by passkey.
-    fn set_passkey_wallet_map(
-        e: Env,
-        passkey: BytesN<65>,
-        wallet: Address,
-    ) -> Result<(), RegistryError> {
-        let factory = read_factory(&e).ok_or(RegistryError::FactoryNotSet)?;
-        factory.require_auth();
-        write_passkey_wallet_map(&e, passkey.clone(), wallet.clone())?;
-
-        events::PasskeyMapEvent { wallet, passkey }.publish(&e);
-
-        Ok(())
-    }
 
     /// Verify identity and bind wallet.
     ///
@@ -301,17 +279,6 @@ impl RegistryTrait for Registry {
         user_id: String,
     ) -> Result<Option<Address>, RegistryError> {
         read_userid_wallet_map(&e, platform, user_id)
-    }
-
-    /// Get wallet by passkey.
-    ///
-    /// Notes:
-    /// - Returns `None` if not found.
-    fn get_wallet_by_passkey(
-        e: Env,
-        passkey: BytesN<65>,
-    ) -> Result<Option<Address>, RegistryError> {
-        read_passkey_wallet_map(&e, passkey)
     }
 
     // admin/config

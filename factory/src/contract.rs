@@ -109,14 +109,6 @@ impl FactoryTrait for FactoryContract {
             external_wallet,
         )?;
 
-        let registry = read_registry(&e).ok_or(WalletError::RegistryNotFound)?;
-
-        let _: Val = e.invoke_contract(
-            &registry,
-            &Symbol::new(&e, "set_passkey_wallet_map"),
-            vec![&e, passkey.into_val(&e), wallet_address.into_val(&e)],
-        );
-
         write_creation_nonce_used(&e, &nonce);
 
         events::WalletCreationEvent {

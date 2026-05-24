@@ -6,7 +6,7 @@ use upgrade::errors::UpgradeError;
 /// Public interface for the identity registry contract.
 ///
 /// Notes:
-/// - Covers identity binding, passkey/user mapping, validator management,
+/// - Covers identity binding, user mapping, validator management,
 ///   admin control, and upgrade governance.
 pub trait RegistryTrait {
     // initialization
@@ -23,22 +23,6 @@ pub trait RegistryTrait {
     fn remove_manager(e: Env, manager: Address) -> Result<(), RegistryError>;
 
     // identity core
-
-    /// Verify identity binding and store the wallet mapping.
-    ///
-    /// Notes:
-    /// - Verifies validator signatures for the provided identity payload.
-    /// - Binds wallet to `(platform, user_id)` after successful verification.
-
-    /// Store passkey-to-wallet mapping.
-    ///
-    /// Notes:
-    /// - Used to resolve wallet by passkey.
-    fn set_passkey_wallet_map(
-        e: Env,
-        passkey: BytesN<65>,
-        wallet: Address,
-    ) -> Result<(), RegistryError>;
 
     fn set_id_wallet_map(
         e: Env,
@@ -88,13 +72,6 @@ pub trait RegistryTrait {
         platform: String,
         user_id: String,
     ) -> Result<Option<Address>, RegistryError>;
-
-    /// Resolve wallet by passkey.
-    ///
-    /// Notes:
-    /// - Returns `None` when no mapping exists.
-    fn get_wallet_by_passkey(e: Env, passkey: BytesN<65>)
-        -> Result<Option<Address>, RegistryError>;
 
     // admin/config
 
