@@ -1,6 +1,8 @@
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{xdr::ToXdr, Address, Bytes, Env, String};
 
 use socketfi_shared::{registry_errors::RegistryError, utils::userid_wallet_key};
+
+use crate::data::DataKey;
 
 /// Reads the wallet bound to a given `(platform, user_id)` identity.
 ///
@@ -19,6 +21,55 @@ pub fn read_userid_wallet_map(
 ) -> Result<Option<Address>, RegistryError> {
     let key = userid_wallet_key(e, platform, user_id)?;
     Ok(e.storage().persistent().get(&key))
+}
+
+pub fn read_wallet_is_mapped(
+    e: &Env,
+    platform_validated: String,
+    wallet: Address,
+) -> Result<bool, RegistryError> {
+    let mut salt = Bytes::new(e);
+    salt.append(&platform_validated.into());
+    salt.push_back(0);
+    salt.append(&wallet.to_xdr(e));
+
+    let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
+
+    Ok(e.storage().persistent().get(&key).unwrap_or(false))
+}
+
+pub fn write_wallet_is_mapped(
+    e: &Env,
+    platform_validated: String,
+    wallet: Address,
+) -> Result<(), RegistryError> {
+    let mut salt = Bytes::new(e);
+    salt.append(&platform_validated.into());
+    salt.push_back(0);
+    salt.append(&wallet.to_xdr(e));
+
+    let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
+
+    e.storage().persistent().set(&key, &true);
+
+    Ok(())
+}
+
+pub fn delete_wallet_is_mapped(
+    e: &Env,
+    platform_validated: String,
+    wallet: Address,
+) -> Result<(), RegistryError> {
+    let mut salt = Bytes::new(e);
+    salt.append(&platform_validated.into());
+    salt.push_back(0);
+    salt.append(&wallet.to_xdr(e));
+
+    let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
+
+    e.storage().persistent().remove(&key);
+
+    Ok(())
 }
 
 /// Writes a new `(platform, user_id) -> wallet` mapping.

@@ -4,7 +4,10 @@ use soroban_sdk::{
 
 use crate::{
     contract_trait::RegistryTrait,
-    registry::{read_userid_wallet_map, remove_userid_wallet_map, write_userid_wallet_map},
+    registry::{
+        delete_wallet_is_mapped, read_userid_wallet_map, read_wallet_is_mapped,
+        remove_userid_wallet_map, write_userid_wallet_map, write_wallet_is_mapped,
+    },
     registry_managers::{
         read_is_registry_manager, require_registry_manager, write_add_registry_manager,
         write_remove_registry_manager,
@@ -115,6 +118,11 @@ impl RegistryTrait for Registry {
         let platform = SocialPlatform::is_platform_supported(platform_str)?;
         validate_userid(user_id.clone())?;
 
+        let platform_validated = String::from_str(&e, platform.as_str());
+
+        if read_wallet_is_mapped(&e, platform_validated.clone(), wallet.clone())? {
+            return Err(RegistryError::WalletAlreadyMapped);
+        }
         let threshold = read_threshold(&e);
         if threshold == 0 {
             return Err(RegistryError::InvalidThreshold);
@@ -141,10 +149,10 @@ impl RegistryTrait for Registry {
         }
 
         let mut message = Bytes::new(&e);
-        message.append(&String::from_str(&e, "verify_identity_binding").to_xdr(&e));
+        message.append(&String::from_str(&e, "set_id_wallet_map").to_xdr(&e));
         message.append(&e.current_contract_address().to_xdr(&e));
         message.append(&wallet.clone().to_xdr(&e));
-        message.append(&String::from_str(&e, platform.as_str()).to_xdr(&e));
+        message.append(&platform_validated.clone().to_xdr(&e));
         message.append(&user_id.clone().to_xdr(&e));
 
         for s in signatures.iter() {
@@ -152,7 +160,6 @@ impl RegistryTrait for Registry {
                 .ed25519_verify(&s.validator, &message, &s.signature);
         }
 
-        let platform_validated = String::from_str(&e, platform.as_str());
         write_userid_wallet_map(
             &e,
             platform_validated.clone(),
@@ -160,6 +167,7 @@ impl RegistryTrait for Registry {
             wallet.clone(),
         )?;
 
+        write_wallet_is_mapped(&e, platform_validated.clone(), wallet.clone())?;
         events::AddIdentityMapEvent {
             wallet,
             id: user_id,
@@ -193,6 +201,8 @@ impl RegistryTrait for Registry {
         wallet.require_auth();
 
         remove_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?;
+
+        delete_wallet_is_mapped(&e, platform_validated.clone(), wallet.clone())?;
         events::RemoveIdentityMapEvent {
             wallet,
             id: user_id,
@@ -229,6 +239,7 @@ impl RegistryTrait for Registry {
             .ok_or(RegistryError::IdentityNotFound)?;
 
         remove_userid_wallet_map(&e, platform_validated.clone(), user_id.clone())?;
+        delete_wallet_is_mapped(&e, platform_validated.clone(), wallet.clone())?;
 
         events::RemoveIdentityMapEvent {
             wallet,

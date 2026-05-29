@@ -25,4 +25,5 @@ pub enum RegistryError {
     IdentityNotFound = 4001,
     NotRegistryManager = 4051,
     FactoryNotSet = 4101,
+    WalletAlreadyMapped = 5001,
 }

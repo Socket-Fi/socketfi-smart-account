@@ -1,4 +1,4 @@
-use socketfi_shared::tokens::read_limit;
+use socketfi_shared::tokens::{read_allowance_expiration, read_limit};
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
@@ -48,6 +48,14 @@ pub fn validate_limit(
         Some(2)
     } else if func == approve {
         require_args_len(&args, 4)?;
+
+        //check allowance expiration
+        let expiration: u32 = u32::from_val(e, &args.get_unchecked(3));
+
+        if expiration > read_allowance_expiration(e) {
+            return Err(WalletError::InvalidExpiration);
+        }
+
         Some(2)
     } else if func == burn {
         require_args_len(&args, 2)?;
