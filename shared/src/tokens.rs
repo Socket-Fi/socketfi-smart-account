@@ -12,9 +12,6 @@ pub enum DataKey {
     /// Relative ledger offset used when creating token approvals.
     AllowanceExpiration,
 
-    /// Default spend limit used when an asset-specific limit is not set.
-    DefaultSpendLimit,
-
     /// Per-asset spend limit override.
     SpendLimit(Address),
 
