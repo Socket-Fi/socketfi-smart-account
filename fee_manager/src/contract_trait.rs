@@ -1,4 +1,5 @@
-use soroban_sdk::{Address, BytesN, Env, Vec};
+use soroban_sdk::{Address, BytesN, Env, String, Vec};
+use upgrade::errors::UpgradeError;
 
 use crate::errors::ContractError;
 use socketfi_shared::fee_types::FeeDecision;
@@ -85,5 +86,26 @@ pub trait FeeManagerTrait {
     // -------------------------------------------------------------------------
     // Contract Upgrade
     // -------------------------------------------------------------------------
-    fn upgrade(e: Env, new_wasm_hash: BytesN<32>);
+
+    /// - Applies the current passed proposal.
+    fn apply_upgrade(e: Env) -> Result<BytesN<32>, UpgradeError>;
+
+    /// - Starts governance flow for a new wasm hash.
+    fn propose_upgrade(
+        e: Env,
+        proposal_type: String,
+        new_wasm_hash: BytesN<32>,
+    ) -> Result<(), UpgradeError>;
+
+    /// Add governance voter.
+    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
+
+    /// Remove governance voter.
+    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
+
+    /// - Records voter approval for the supplied hash.
+    fn cast_vote(e: Env, voter: Address, wasm_hash: BytesN<32>) -> Result<(), UpgradeError>;
+
+    /// Cancel active proposal.
+    fn cancel_proposal(e: Env) -> Result<(), UpgradeError>;
 }

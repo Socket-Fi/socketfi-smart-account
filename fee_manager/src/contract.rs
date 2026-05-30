@@ -1,6 +1,6 @@
 use socketfi_shared::events;
 use socketfi_shared::tokens::send_asset;
-use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
+use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, String, Vec};
 
 use crate::contract_trait::FeeManagerTrait;
 use crate::errors::ContractError;
@@ -17,6 +17,10 @@ use socketfi_shared::{
         read_is_supported_asset, read_supported_assets, take_asset, write_add_asset,
         write_remove_asset,
     },
+};
+use upgrade::{
+    cancel_upgrade_proposal, create_upgrade_proposal, errors::UpgradeError, execute_upgrade,
+    upgrade_add_voter, upgrade_remove_voter, write_cast_vote,
 };
 
 #[contract]
@@ -400,8 +404,79 @@ impl FeeManagerTrait for FeeManager {
     // -------------------------------------------------------------------------
     // Contract Upgrade
     // -------------------------------------------------------------------------
-    fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
+    /// Execute approved upgrade.
+    ///
+    /// Notes:
+    /// - Admin only.
+    /// - Applies current passed proposal.
+    fn apply_upgrade(e: Env) -> Result<BytesN<32>, UpgradeError> {
         authenticate_admin(&e);
-        e.deployer().update_current_contract_wasm(new_wasm_hash);
+        execute_upgrade(&e)
+    }
+
+    /// Create upgrade proposal.
+    ///
+    /// Notes:
+    /// - Admin only.
+    /// - Starts governance flow for new wasm hash.
+    fn propose_upgrade(
+        e: Env,
+        proposal_type: String,
+        new_wasm_hash: BytesN<32>,
+    ) -> Result<(), UpgradeError> {
+        authenticate_admin(&e);
+        create_upgrade_proposal(&e, proposal_type, &new_wasm_hash)
+    }
+
+    /// Add governance voter.
+    ///
+    /// Notes:
+    /// - Admin only.
+    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
+        authenticate_admin(&e);
+        upgrade_add_voter(&e, &voter)?;
+
+        events::AddVoterEvent {
+            value: voter.clone(),
+        }
+        .publish(&e);
+
+        Ok(())
+    }
+
+    /// Remove governance voter.
+    ///
+    /// Notes:
+    /// - Admin only.
+    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError> {
+        authenticate_admin(&e);
+        upgrade_remove_voter(&e, &voter)?;
+
+        events::RemoveVoterEvent {
+            value: voter.clone(),
+        }
+        .publish(&e);
+
+        Ok(())
+    }
+
+    /// Cast vote on active proposal.
+    ///
+    /// Notes:
+    /// - Voter must authorize.
+    /// - Records approval for supplied hash.
+    fn cast_vote(e: Env, voter: Address, wasm_hash: BytesN<32>) -> Result<(), UpgradeError> {
+        voter.require_auth();
+        write_cast_vote(&e, &voter, &wasm_hash)?;
+        Ok(())
+    }
+
+    /// Cancel active proposal.
+    ///
+    /// Notes:
+    /// - Admin only.
+    fn cancel_proposal(e: Env) -> Result<(), UpgradeError> {
+        authenticate_admin(&e);
+        cancel_upgrade_proposal(&e)
     }
 }
