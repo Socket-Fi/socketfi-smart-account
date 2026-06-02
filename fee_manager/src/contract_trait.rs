@@ -2,7 +2,7 @@ use soroban_sdk::{Address, BytesN, Env, String, Vec};
 use upgrade::errors::UpgradeError;
 
 use crate::errors::ContractError;
-use socketfi_shared::fee_types::FeeDecision;
+use socketfi_shared::fee_types::{FeeDecision, FeePreference};
 
 pub trait FeeManagerTrait {
     // -------------------------------------------------------------------------
@@ -54,23 +54,27 @@ pub trait FeeManagerTrait {
     fn quote_transaction_fee(
         e: Env,
         wallet: Address,
-        tx_asset: Address,
-        tx_amount: i128,
+        fee_pref: Option<FeePreference>,
     ) -> Result<FeeDecision, ContractError>;
 
-    // Applies the result of quote_transaction_fee
+    fn get_collect_now_fee_amount(
+        e: Env,
+        wallet: Address,
+        fee_pref: Option<FeePreference>,
+    ) -> Option<i128>;
+
+    // Handles the settlement of quote_transaction_fee
+    fn handle_transaction_fee(
+        e: Env,
+        wallet: Address,
+        fee_pref: Option<FeePreference>,
+    ) -> Result<(), ContractError>;
     fn settle_wallet_fee(
         e: Env,
         payer: Address,
         wallet: Address,
-        fee_asset: Address,
-        added_base_fee: i128,
+        fee_pref: FeePreference,
     ) -> Result<(), ContractError>;
-    fn update_wallet_deferred_fee(
-        e: Env,
-        wallet: Address,
-        added_base_fee: i128,
-    ) -> Result<i128, ContractError>;
 
     // -------------------------------------------------------------------------
     // Fee Treasury Management

@@ -5,8 +5,7 @@ use soroban_sdk::{contracttype, Address};
 pub enum DataKey {
     Admin,
     BaseFee,
-    MaxPendingFee,
+    MaxDeferredFee,
     FeeAssetRate(Address),
     DeferredFee(Address),
-    PendingFee(Address),
 }

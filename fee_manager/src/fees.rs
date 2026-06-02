@@ -35,13 +35,13 @@ pub fn write_base_fee(e: &Env, fee: i128) {
 pub fn read_max_deferred_fee(e: &Env) -> Result<i128, ContractError> {
     e.storage()
         .instance()
-        .get(&DataKey::MaxPendingFee)
-        .ok_or(ContractError::MaxPendingFeeNotFound)
+        .get(&DataKey::MaxDeferredFee)
+        .ok_or(ContractError::MaxDeferredFeeNotFound)
 }
 
 pub fn write_max_deferred_fee(e: &Env, fee: i128) {
     // ASSUMPTION: validated externally (fee > 0 and >= base_fee)
-    e.storage().instance().set(&DataKey::MaxPendingFee, &fee);
+    e.storage().instance().set(&DataKey::MaxDeferredFee, &fee);
 }
 
 // ---------------------------------------------------------------------
@@ -55,7 +55,7 @@ pub fn write_max_deferred_fee(e: &Env, fee: i128) {
 pub fn read_deferred_fee(e: &Env, user: &Address) -> i128 {
     e.storage()
         .persistent()
-        .get(&DataKey::PendingFee(user.clone()))
+        .get(&DataKey::DeferredFee(user.clone()))
         .unwrap_or(0)
 }
 
@@ -65,7 +65,7 @@ pub fn write_deferred_fee(e: &Env, user: &Address, amount: i128) {
     // - Setting to 0 effectively "clears" deferred fee
     e.storage()
         .persistent()
-        .set(&DataKey::PendingFee(user.clone()), &amount);
+        .set(&DataKey::DeferredFee(user.clone()), &amount);
 }
 
 // ---------------------------------------------------------------------
@@ -80,7 +80,7 @@ pub fn read_fee_asset_rate(e: &Env, asset: &Address) -> Result<i128, ContractErr
     // SAFETY:
     // - Prevents reading rate for unsupported asset
     if !read_is_supported_asset(&e, asset.clone()) {
-        return Err(ContractError::UnsupportedAsset);
+        return Err(ContractError::UnsupportedFeeAsset);
     }
 
     e.storage()
@@ -133,19 +133,19 @@ pub fn convert_base_to_asset(
 
     let token_precision = 10_i128
         .checked_pow(decimals)
-        .ok_or(ContractError::InvalidAmount)?;
+        .ok_or(ContractError::MathOverflow)?;
 
     let numerator = total_fee
         .checked_mul(asset_rate)
         .and_then(|v| v.checked_mul(token_precision))
-        .ok_or(ContractError::InvalidAmount)?;
+        .ok_or(ContractError::MathOverflow)?;
 
     let denominator = PRECISION
         .checked_mul(PRECISION)
-        .ok_or(ContractError::InvalidAmount)?;
+        .ok_or(ContractError::MathOverflow)?;
 
     numerator
         .checked_add(denominator - 1)
         .and_then(|v| v.checked_div(denominator))
-        .ok_or(ContractError::InvalidAmount)
+        .ok_or(ContractError::MathOverflow)
 }

@@ -1,9 +1,9 @@
 use crate::{
-    auth::{compute_tx_nonce, increment_nonce, owner_require_auth},
+    auth::{authorize_recovery, compute_tx_nonce, increment_nonce, owner_require_auth},
     constructor::init_constructor,
     fee_handler::handle_transaction_fee,
     invocation_auth::{dapp_invoke_auth, validate_limit},
-    state::{is_initialized, read_owner, read_passkey, write_owner},
+    state::{is_initialized, read_owner, read_passkey, read_rpid_hash, write_owner, write_passkey},
     wallet_creation_validation::{validate_verify_bls_key_set_pop, verify_passkey_pop},
     wallet_trait::WalletTrait,
 };
@@ -15,6 +15,7 @@ use socketfi_shared::{
     constants::PRECISION,
     dependencies_types::ProtocolDependencies,
     events,
+    fee_types::FeePreference,
     registry_types::ValidatorSignature,
     tokens::{
         read_allowance, read_balance, read_limit, send_asset, spend_asset, take_asset,
@@ -265,6 +266,120 @@ impl WalletTrait for Wallet {
     }
 
     // ---------------------------------------------------------------------
+    // Passkey management
+    // ---------------------------------------------------------------------
+    /// Rotate the wallet passkey.
+    ///
+    /// Auth:
+    /// - Requires authorization from the currently registered wallet passkey or g account.
+    ///
+    /// Effects:
+    /// - Replaces the existing wallet passkey with a newly provided passkey.
+    /// - Increments wallet nonce after successful rotation.
+    ///
+    /// Notes:
+    /// - The new passkey must prove ownership by signing the rotation challenge.
+    /// - Rotation challenge is derived from wallet-specific transaction nonce data.
+    /// - Prevents replay through nonce-based challenge construction.
+    /// - Rejects rotation if RP ID hash configuration is missing.
+    /// - `valid_until_ledger` limits how long the authorization remains valid.
+    /// - The new passkey is not activated unless both:
+    ///   - current owner authorization succeeds, and
+    ///   - proof-of-possession for the new passkey succeeds.
+    fn rotate_passkey(
+        env: Env,
+        new_passkey: BytesN<65>,
+        new_passkey_pop_sig: PasskeySignature,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError> {
+        let args: Vec<Val> = vec![&env, new_passkey.into_val(&env)];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "rotate_passkey"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        let rpid_hash = read_rpid_hash(&env).ok_or(WalletError::RpidNotFound)?;
+
+        verify_passkey_pop(
+            &env,
+            challenge.clone(),
+            new_passkey.clone(),
+            new_passkey_pop_sig,
+            rpid_hash,
+        )?;
+
+        owner_require_auth(env.clone(), challenge, passkey_sig)?;
+
+        write_passkey(&env, new_passkey);
+
+        increment_nonce(&env);
+
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------------
+    // Account recovery
+    // ---------------------------------------------------------------------
+
+    /// Recover wallet access using the configured recovery mechanism.
+    ///
+    /// Auth:
+    /// - Requires valid recovery authorization from the registered recovery
+    ///    signer set through aggregated BLS signature verification.
+    ///
+    /// Effects:
+    /// - Replaces the current wallet passkey with a newly provided passkey.
+    /// - Increments wallet nonce after successful recovery.
+    ///
+    /// Notes:
+    /// - Intended for account recovery after successful off-chain ownership
+    ///   verification and recovery approval flow.
+    /// - The new passkey must prove ownership by signing the recovery challenge.
+    /// - Recovery authorization is validated against the wallet recovery policy.
+    /// - Recovery challenge is derived from wallet-specific transaction nonce data.
+    /// - Prevents replay through nonce-based challenge construction.
+    /// - Rejects recovery if RP ID hash configuration is missing.
+    /// - `valid_until_ledger` limits how long the recovery authorization remains valid.
+    /// - The new passkey is not activated unless both:
+    ///   - recovery authorization succeeds, and
+    ///   - proof-of-possession for the new passkey succeeds.
+    fn recover_account(
+        env: Env,
+        new_passkey: BytesN<65>,
+        new_passkey_pop_sig: PasskeySignature,
+        agg_bls_sig: BytesN<192>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError> {
+        let args: Vec<Val> = vec![&env, new_passkey.into_val(&env)];
+        let challenge = compute_tx_nonce(
+            &env,
+            String::from_str(&env, "recover_account"),
+            args,
+            valid_until_ledger,
+        )?;
+
+        let rpid_hash = read_rpid_hash(&env).ok_or(WalletError::RpidNotFound)?;
+
+        verify_passkey_pop(
+            &env,
+            challenge.clone(),
+            new_passkey.clone(),
+            new_passkey_pop_sig,
+            rpid_hash,
+        )?;
+
+        authorize_recovery(env.clone(), challenge, agg_bls_sig)?;
+
+        write_passkey(&env, new_passkey);
+
+        increment_nonce(&env);
+
+        Ok(())
+    }
+    // ---------------------------------------------------------------------
     // Asset actions
     // ---------------------------------------------------------------------
 
@@ -307,6 +422,7 @@ impl WalletTrait for Wallet {
         to: Address,
         asset: Address,
         amount: i128,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
@@ -325,7 +441,9 @@ impl WalletTrait for Wallet {
             to.clone().into_val(&env),
             asset.clone().into_val(&env),
             amount.into_val(&env),
+            fee_pref.into_val(&env),
         ];
+
         let challenge = compute_tx_nonce(
             &env,
             String::from_str(&env, "withdraw"),
@@ -334,7 +452,7 @@ impl WalletTrait for Wallet {
         )?;
         owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
-        handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
+        handle_transaction_fee(&env, fee_pref)?;
 
         send_asset(&env, &to, &asset, amount);
         increment_nonce(&env);
@@ -358,6 +476,7 @@ impl WalletTrait for Wallet {
         asset: Address,
         spender: Address,
         amount: i128,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError> {
@@ -385,6 +504,7 @@ impl WalletTrait for Wallet {
             asset.clone().into_val(&env),
             spender.clone().into_val(&env),
             amount.into_val(&env),
+            fee_pref.into_val(&env),
         ];
 
         let challenge = compute_tx_nonce(
@@ -396,7 +516,7 @@ impl WalletTrait for Wallet {
 
         owner_require_auth(env.clone(), challenge, passkey_sig.clone())?;
 
-        handle_transaction_fee(&env, asset.clone(), amount, &passkey_sig)?;
+        handle_transaction_fee(&env, fee_pref)?;
 
         write_approve(&env, &asset, &spender, &amount);
 
@@ -458,9 +578,10 @@ impl WalletTrait for Wallet {
         func: Symbol,
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
-    ) -> Result<(), WalletError> {
+    ) -> Result<Val, WalletError> {
         // Validate the top-level call in case the wallet is directly invoking
         // a gated token operation such as transfer, approve, or burn.
         if let Some(a) = args.clone() {
@@ -487,6 +608,7 @@ impl WalletTrait for Wallet {
         if let Some(p) = auth_vec.clone() {
             a_args.push_back(p.into_val(&env));
         }
+        a_args.push_back(fee_pref.into_val(&env));
 
         let challenge = compute_tx_nonce(
             &env,
@@ -499,6 +621,8 @@ impl WalletTrait for Wallet {
         // current-contract deep auth.
         owner_require_auth(env.clone(), challenge, passkey_sig)?;
 
+        handle_transaction_fee(&env, fee_pref)?;
+
         // Validate and register deep auth entries after owner auth succeeds.
         //
         // dapp_invoke_auth also validates nested token operations such as
@@ -509,10 +633,10 @@ impl WalletTrait for Wallet {
 
         let invoke_args = args.unwrap_or(vec![&env]);
 
-        let _res: Val = env.invoke_contract(&contract_id, &func, invoke_args);
+        let res: Val = env.invoke_contract(&contract_id, &func, invoke_args);
         increment_nonce(&env);
 
-        Ok(())
+        Ok(res)
     }
 
     /// Return the stored passkey, if configured.

@@ -7,7 +7,7 @@ use soroban_sdk::{
 
 use socketfi_access::access::read_fee_manager;
 
-use crate::fee_handler::handle_transaction_fee;
+// use crate::fee_handler::handle_transaction_fee;
 
 fn require_args_len(args: &Vec<Val>, expected: u32) -> Result<(), WalletError> {
     if args.len() != expected {

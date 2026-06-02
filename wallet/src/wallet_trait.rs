@@ -1,4 +1,4 @@
-use socketfi_shared::registry_types::ValidatorSignature;
+use socketfi_shared::{fee_types::FeePreference, registry_types::ValidatorSignature};
 use socketfi_webauthn::{
     key_types::{BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
@@ -37,6 +37,22 @@ pub trait WalletTrait {
         valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
+    fn rotate_passkey(
+        env: Env,
+        new_passkey: BytesN<65>,
+        new_passkey_pop_sig: PasskeySignature,
+        passkey_sig: Option<PasskeySignature>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError>;
+
+    fn recover_account(
+        env: Env,
+        new_passkey: BytesN<65>,
+        new_passkey_pop_sig: PasskeySignature,
+        agg_bls_sig: BytesN<192>,
+        valid_until_ledger: u32,
+    ) -> Result<(), WalletError>;
+
     fn add_id_wallet_map(
         env: Env,
         user_id: String,
@@ -62,6 +78,7 @@ pub trait WalletTrait {
         to: Address,
         asset: Address,
         amount: i128,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
@@ -71,6 +88,7 @@ pub trait WalletTrait {
         asset: Address,
         spender: Address,
         amount: i128,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
@@ -90,9 +108,10 @@ pub trait WalletTrait {
         func: Symbol,
         args: Option<Vec<Val>>,
         auth_vec: Option<Vec<Map<String, Val>>>,
+        fee_pref: Option<FeePreference>,
         passkey_sig: Option<PasskeySignature>,
         valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
+    ) -> Result<Val, WalletError>;
 
     // views
     fn get_passkey(env: Env) -> Option<BytesN<65>>;

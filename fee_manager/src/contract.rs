@@ -1,5 +1,3 @@
-use socketfi_shared::events;
-use socketfi_shared::tokens::send_asset;
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, String, Vec};
 
 use crate::contract_trait::FeeManagerTrait;
@@ -12,9 +10,13 @@ use crate::fees::{
 
 use socketfi_access::access::{authenticate_admin, read_admin, write_admin};
 use socketfi_shared::{
-    fee_types::{CannotProceedData, CollectNowData, DeferData, FeeDecision},
+    events,
+    fee_types::{
+        CannotProceedData, CannotProceedReason, CollectNowData, DeferData, FeeDecision,
+        FeePreference,
+    },
     tokens::{
-        read_is_supported_asset, read_supported_assets, take_asset, write_add_asset,
+        read_is_supported_asset, read_supported_assets, send_asset, take_asset, write_add_asset,
         write_remove_asset,
     },
 };
@@ -41,12 +43,8 @@ impl FeeManagerTrait for FeeManager {
         base_fee: i128,
         max_deferred_fee: i128,
     ) -> Result<(), ContractError> {
-        if base_fee <= 0 {
-            return Err(ContractError::InvalidAmount);
-        }
-
-        if max_deferred_fee < base_fee {
-            return Err(ContractError::InvalidAmount);
+        if base_fee <= 0 || max_deferred_fee < base_fee {
+            return Err(ContractError::InvalidFeeConfig);
         }
 
         write_admin(&e, &admin);
@@ -73,12 +71,13 @@ impl FeeManagerTrait for FeeManager {
     // Base Fee Configuration
     // -------------------------------------------------------------------------
     fn set_base_fee(e: Env, fee: i128) -> Result<(), ContractError> {
-        authenticate_admin(&e);
+        let max_deferred = read_max_deferred_fee(&e)?;
 
-        if fee <= 0 {
-            return Err(ContractError::InvalidAmount);
+        if fee <= 0 || fee > max_deferred {
+            return Err(ContractError::InvalidFeeConfig);
         }
 
+        authenticate_admin(&e);
         write_base_fee(&e, fee);
         Ok(())
     }
@@ -88,11 +87,13 @@ impl FeeManagerTrait for FeeManager {
     }
 
     fn set_max_deferred_fee(e: Env, fee: i128) -> Result<(), ContractError> {
-        authenticate_admin(&e);
+        let base_fee = read_base_fee(&e)?;
 
-        if fee <= 0 {
-            return Err(ContractError::InvalidAmount);
+        if base_fee <= 0 || fee < base_fee {
+            return Err(ContractError::InvalidFeeConfig);
         }
+
+        authenticate_admin(&e);
 
         write_max_deferred_fee(&e, fee);
         Ok(())
@@ -136,7 +137,7 @@ impl FeeManagerTrait for FeeManager {
         }
 
         if !read_is_supported_asset(&e, asset.clone()) {
-            return Err(ContractError::UnsupportedAsset);
+            return Err(ContractError::UnsupportedFeeAsset);
         }
 
         write_fee_asset_rate(&e, &asset, rate);
@@ -172,190 +173,238 @@ impl FeeManagerTrait for FeeManager {
     // 1. Read configured base fee, max deferred fee, and wallet deferred balance.
     // 2. Compute the updated fee balance:
     //      updated_fee = deferred_fee + base_fee
-    // 3. If the transaction asset supports fee collection:
-    //      → return CollectNow
-    // 4. If the asset does not support collection and updated fee exceeds
-    //    the configured deferred limit:
-    //      → return CannotProceed
-    // 5. Otherwise:
-    //      → return Defer with the updated deferred balance
+    // 3. If no fee preference is provided:
+    //      → attempt deferred fee handling
     //
-    // Notes:
-    // - Returned values are informational only and do not mutate state.
-    // - Execution paths must enforce the returned decision.
-    // - All fee values are represented in internal base fee units unless
-    //   otherwise specified.
+    // 4. If deferred balance would exceed the configured limit:
+    //      → return CannotProceed
+    //
+    // 5. If a fee preference is provided:
+    //      → validate the fee asset and maximum allowed fee
+    //      → convert total fee once into the selected asset
+    //      → return CollectNow if fee is within the user's cap
+    //
+    // 6. Otherwise:
+    //      → return CannotProceed
+
     fn quote_transaction_fee(
         e: Env,
         wallet: Address,
-        tx_asset: Address,
-        tx_amount: i128,
+        fee_pref: Option<FeePreference>,
     ) -> Result<FeeDecision, ContractError> {
-        if tx_amount < 0 {
-            return Err(ContractError::InvalidAmount);
-        }
-
         let base_fee = read_base_fee(&e)?;
         let max_deferred_fee = read_max_deferred_fee(&e)?;
 
-        if base_fee < 0 || max_deferred_fee < 0 {
-            return Err(ContractError::InvalidAmount);
+        if base_fee <= 0 || max_deferred_fee < base_fee {
+            return Err(ContractError::InvalidFeeConfig);
         }
 
-        let deferred_fee = read_deferred_fee(&e, &wallet);
+        let deferred_fee_base = read_deferred_fee(&e, &wallet);
 
-        if deferred_fee < 0 {
-            return Err(ContractError::InvalidAmount);
+        if deferred_fee_base < 0 {
+            return Err(ContractError::InvalidDeferredFee);
         }
 
-        let total_fee_base = deferred_fee
+        let total_fee_base = deferred_fee_base
             .checked_add(base_fee)
-            .ok_or(ContractError::InvalidAmount)?;
+            .ok_or(ContractError::MathOverflow)?;
 
-        if read_is_supported_asset(&e, tx_asset.clone()) {
-            let rate = read_fee_asset_rate(&e, &tx_asset)?;
-            let decimals: u32 = token::Client::new(&e, &tx_asset).decimals();
+        match fee_pref {
+            None => {
+                if total_fee_base > max_deferred_fee {
+                    return Ok(FeeDecision::CannotProceed(CannotProceedData {
+                        reason: CannotProceedReason::MaxDeferredFeeExceeded,
+                        fee_asset: None,
+                        total_fee_in_base: total_fee_base,
+                        total_fee_in_asset: None,
+                        max_total_fee: None,
+                        max_deferred_fee,
+                    }));
+                }
 
-            let total_fee_in_asset = convert_base_to_asset(total_fee_base, rate, decimals)?;
-            let added_in_asset = convert_base_to_asset(base_fee, rate, decimals)?;
-            let deferred_in_asset = convert_base_to_asset(deferred_fee, rate, decimals)?;
+                Ok(FeeDecision::Defer(DeferData {
+                    updated_deferred_fee: total_fee_base,
+                    max_deferred_fee,
+                }))
+            }
 
-            let total_tx_amount = tx_amount
-                .checked_add(total_fee_in_asset)
-                .ok_or(ContractError::InvalidAmount)?;
+            Some(pref) => {
+                if pref.max_total_fee <= 0 {
+                    return Ok(FeeDecision::CannotProceed(CannotProceedData {
+                        reason: CannotProceedReason::InvalidMaxTotalFee,
+                        fee_asset: Some(pref.asset),
+                        total_fee_in_base: total_fee_base,
+                        total_fee_in_asset: None,
+                        max_total_fee: Some(pref.max_total_fee),
+                        max_deferred_fee,
+                    }));
+                }
 
-            return Ok(FeeDecision::CollectNow(CollectNowData {
-                fee_asset: tx_asset,
-                previous_deferred_fee_in_base: deferred_fee,
-                previous_deferred_fee_in_asset: deferred_in_asset,
-                added_fee_in_base: base_fee,
-                added_fee_in_asset: added_in_asset,
-                total_in_base: total_fee_base,
-                total_fee_in_asset,
-                total_tx_amount,
-            }));
+                if !read_is_supported_asset(&e, pref.asset.clone()) {
+                    return Ok(FeeDecision::CannotProceed(CannotProceedData {
+                        reason: CannotProceedReason::UnsupportedFeeAsset,
+                        fee_asset: Some(pref.asset),
+                        total_fee_in_base: total_fee_base,
+                        total_fee_in_asset: None,
+                        max_total_fee: Some(pref.max_total_fee),
+                        max_deferred_fee,
+                    }));
+                }
+
+                let rate = read_fee_asset_rate(&e, &pref.asset)?;
+                let decimals: u32 = token::Client::new(&e, &pref.asset).decimals();
+
+                let total_fee_in_asset = convert_base_to_asset(total_fee_base, rate, decimals)?;
+
+                if total_fee_in_asset > pref.max_total_fee {
+                    return Ok(FeeDecision::CannotProceed(CannotProceedData {
+                        reason: CannotProceedReason::FeeExceedsMaximum,
+                        fee_asset: Some(pref.asset),
+                        total_fee_in_base: total_fee_base,
+                        total_fee_in_asset: Some(total_fee_in_asset),
+                        max_total_fee: Some(pref.max_total_fee),
+                        max_deferred_fee,
+                    }));
+                }
+
+                Ok(FeeDecision::CollectNow(CollectNowData {
+                    fee_asset: pref.asset,
+                    total_fee_in_base: total_fee_base,
+                    total_fee_in_asset,
+                    max_total_fee: pref.max_total_fee,
+                }))
+            }
         }
-
-        if total_fee_base > max_deferred_fee {
-            return Ok(FeeDecision::CannotProceed(CannotProceedData {
-                previous_deferred_fee: deferred_fee,
-                added_base_fee: base_fee,
-                updated_deferred_fee: total_fee_base,
-                max_deferred_fee,
-                total_tx_amount: tx_amount,
-            }));
-        }
-
-        Ok(FeeDecision::Defer(DeferData {
-            previous_deferred_fee: deferred_fee,
-            added_base_fee: base_fee,
-            updated_deferred_fee: total_fee_base,
-            total_tx_amount: tx_amount,
-        }))
     }
 
-    /// -------------------------------------------------------------------------
-    /// Settles a wallet's accumulated deferred protocol fees.
-    /// -------------------------------------------------------------------------
-    /// Security model:
-    /// - `payer` MUST authorize the payment.
-    /// - `wallet` identifies the wallet whose deferred fee balance is being settled.
-    /// - `added_base_fee` allows the caller to atomically include the current
-    ///   transaction fee into settlement instead of writing deferred state first.
+    /// Returns the immediate fee amount that would be collected for a wallet
+    /// transaction if the current fee decision resolves to `CollectNow`.
+    ///
+    /// Returns:
+    /// - `Some(amount)` when the transaction fee would be collected immediately.
+    /// - `None` when the fee would instead be deferred or cannot proceed.
+    ///
     /// Notes:
-    /// - Passing `added_base_fee = 0` settles only existing deferred fees.
-    /// - Passing `added_base_fee > 0` is intended for wallet execution flows
-    ///   where the current transaction fee should be collected immediately.
-    /// - Third parties are not allowed to inject additional fees.
+    /// - This helper is primarily used by the wallet contract to pre-authorize
+    ///   fee token transfers before calling `handle_transaction_fee`.
+    fn get_collect_now_fee_amount(
+        e: Env,
+        wallet: Address,
+        fee_pref: Option<FeePreference>,
+    ) -> Option<i128> {
+        let decision = Self::quote_transaction_fee(e, wallet, fee_pref).ok()?;
 
+        match decision {
+            FeeDecision::CollectNow(data) => Some(data.total_fee_in_asset),
+
+            _ => None,
+        }
+    }
+
+    /// Handles protocol fee processing for wallet transactions.
+    ///
+    /// Flow:
+    /// - Calls `quote_transaction_fee` to determine how the fee should be handled.
+    /// - If fee collection is requested and valid:
+    ///     → collects deferred fee + current transaction fee immediately.
+    /// - If no fee preference is provided:
+    ///     → defers the current transaction fee.
+    /// - If fee handling cannot proceed:
+    ///     → returns a corresponding contract error.
+    ///
+    /// Notes:
+    /// - This function is the single execution path for transaction fee handling.
+    /// - All wallet transaction entrypoints should call this function.
+    /// - Deferred fee state is updated atomically.
+    /// - Fee conversion is performed exactly once to avoid rounding mismatch.
+
+    fn handle_transaction_fee(
+        e: Env,
+        wallet: Address,
+        fee_pref: Option<FeePreference>,
+    ) -> Result<(), ContractError> {
+        wallet.require_auth();
+
+        let decision = Self::quote_transaction_fee(e.clone(), wallet.clone(), fee_pref)?;
+
+        match decision {
+            FeeDecision::CollectNow(data) => {
+                take_asset(&e, &wallet, &data.fee_asset, data.total_fee_in_asset);
+
+                write_deferred_fee(&e, &wallet, 0);
+
+                Ok(())
+            }
+
+            FeeDecision::Defer(data) => {
+                write_deferred_fee(&e, &wallet, data.updated_deferred_fee);
+
+                Ok(())
+            }
+
+            FeeDecision::CannotProceed(data) => match data.reason {
+                CannotProceedReason::UnsupportedFeeAsset => Err(ContractError::UnsupportedFeeAsset),
+                CannotProceedReason::FeeExceedsMaximum => Err(ContractError::FeeExceedsMaximum),
+                CannotProceedReason::MaxDeferredFeeExceeded => {
+                    Err(ContractError::MaxDeferredFeeExceeded)
+                }
+                CannotProceedReason::InvalidMaxTotalFee => Err(ContractError::InvalidMaxTotalFee),
+            },
+        }
+    }
+
+    /// Settles a wallet's existing deferred protocol fee balance.
+    ///
+    /// Security:
+    /// - `payer` authorizes payment using the selected fee asset.
+    /// - Anyone may settle fees on behalf of a wallet.
+    ///
+    /// Notes:
+    /// - This function settles only existing deferred fees.
+    /// - It does not add the current transaction fee.
+    /// - Fee conversion is performed exactly once.
+    /// - Deferred fee balance is cleared after successful settlement.
     fn settle_wallet_fee(
         e: Env,
         payer: Address,
         wallet: Address,
-        fee_asset: Address,
-        added_base_fee: i128,
+        fee_pref: FeePreference,
     ) -> Result<(), ContractError> {
         payer.require_auth();
 
-        if added_base_fee < 0 {
-            return Err(ContractError::InvalidAmount);
+        if fee_pref.max_total_fee <= 0 {
+            return Err(ContractError::InvalidMaxTotalFee);
         }
 
-        if added_base_fee > 0 && payer != wallet {
-            return Err(ContractError::Unauthorized);
+        if !read_is_supported_asset(&e, fee_pref.asset.clone()) {
+            return Err(ContractError::UnsupportedFeeAsset);
         }
 
-        let current_base_fee = read_deferred_fee(&e, &wallet);
+        let deferred_fee_base = read_deferred_fee(&e, &wallet);
 
-        if current_base_fee < 0 {
-            return Err(ContractError::InvalidAmount);
+        if deferred_fee_base < 0 {
+            return Err(ContractError::InvalidDeferredFee);
         }
 
-        let updated_base_fee = current_base_fee
-            .checked_add(added_base_fee)
-            .ok_or(ContractError::InvalidAmount)?;
-
-        if updated_base_fee == 0 {
+        if deferred_fee_base == 0 {
             return Ok(());
         }
-        let decimals: u32 = token::Client::new(&e, &fee_asset).decimals();
 
-        let total_fee = convert_base_to_asset(
-            updated_base_fee,
-            read_fee_asset_rate(&e, &fee_asset)?,
-            decimals,
-        )?;
+        let rate = read_fee_asset_rate(&e, &fee_pref.asset)?;
+        let decimals: u32 = token::Client::new(&e, &fee_pref.asset).decimals();
 
-        take_asset(&e, &payer, &fee_asset, total_fee);
+        let fee_in_asset = convert_base_to_asset(deferred_fee_base, rate, decimals)?;
+
+        if fee_in_asset > fee_pref.max_total_fee {
+            return Err(ContractError::FeeExceedsMaximum);
+        }
+
+        take_asset(&e, &payer, &fee_pref.asset, fee_in_asset);
 
         write_deferred_fee(&e, &wallet, 0);
 
         Ok(())
     }
-
-    /// Increases the deferred fee balance for a wallet.
-    ///
-    /// Purpose:
-    /// Allows a wallet to accumulate unpaid protocol fees in base fee units
-    /// for later settlement.
-    ///
-    /// Security:
-    /// - Only the wallet itself may authorize deferred fee increases.
-    /// - The function only permits increasing the balance.
-    /// - Negative or zero increments are rejected.
-    /// - Overflow is rejected.
-    ///
-    /// Behavior:
-    /// previous_deferred_fee + added_base_fee → updated_deferred_fee
-    ///
-    /// Notes:
-    /// - This function is called when fee is deferred.
-    fn update_wallet_deferred_fee(
-        e: Env,
-        wallet: Address,
-        added_base_fee: i128,
-    ) -> Result<i128, ContractError> {
-        wallet.require_auth();
-
-        if added_base_fee <= 0 {
-            return Err(ContractError::InvalidAmount);
-        }
-
-        let current_base_fee = read_deferred_fee(&e, &wallet);
-
-        if current_base_fee < 0 {
-            return Err(ContractError::InvalidAmount);
-        }
-
-        let updated_base_fee = current_base_fee
-            .checked_add(added_base_fee)
-            .ok_or(ContractError::InvalidAmount)?;
-
-        write_deferred_fee(&e, &wallet, updated_base_fee);
-
-        Ok(updated_base_fee)
-    }
-
     // -------------------------------------------------------------------------
     // Fee Treasury Management
     // -------------------------------------------------------------------------
@@ -385,7 +434,7 @@ impl FeeManagerTrait for FeeManager {
         }
 
         if !read_is_supported_asset(&e, asset.clone()) {
-            return Err(ContractError::UnsupportedAsset);
+            return Err(ContractError::UnsupportedFeeAsset);
         }
 
         let fee_balance = token::Client::new(&e, &asset).balance(&e.current_contract_address());

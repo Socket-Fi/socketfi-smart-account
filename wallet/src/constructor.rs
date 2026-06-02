@@ -1,6 +1,6 @@
 use socketfi_shared::tokens::write_allowance_expiration;
 use socketfi_webauthn::wallet_error::WalletError;
-use soroban_sdk::{Address, BytesN, Env, Vec};
+use soroban_sdk::{Address, BytesN, Env};
 
 use crate::state::{write_agg_bls_key, write_owner, write_passkey, write_rpid_hash};
 use socketfi_access::access::{

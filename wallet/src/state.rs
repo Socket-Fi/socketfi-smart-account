@@ -1,8 +1,7 @@
 use socketfi_webauthn::wallet_error::WalletError;
-use soroban_sdk::{crypto::bls12_381::G1Affine, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{crypto::bls12_381::G1Affine, Address, BytesN, Env, Vec};
 
 use crate::data::DataKey;
-use socketfi_shared::constants::MAX_BLS_KEYS;
 
 /// Check whether the wallet has already been initialized.
 ///
@@ -92,13 +91,9 @@ pub fn read_agg_bls_key(env: &Env) -> Option<BytesN<96>> {
     env.storage().persistent().get(&key)
 }
 
-pub fn read_rpid_hash(env: &Env) -> BytesN<32> {
-    let default_rpid = Bytes::from_array(&env, b"localhost");
+pub fn read_rpid_hash(env: &Env) -> Option<BytesN<32>> {
     let key = DataKey::RpidHash;
-    env.storage()
-        .instance()
-        .get(&key)
-        .unwrap_or(BytesN::from(env.crypto().sha256(&default_rpid)))
+    env.storage().instance().get(&key)
 }
 
 pub fn write_rpid_hash(env: &Env, rpid_hash: &BytesN<32>) {

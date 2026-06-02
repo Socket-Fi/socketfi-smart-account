@@ -92,7 +92,7 @@ impl SocialPaymentsTrait for SocialPayments {
 
         validate_userid(user_id.clone())?;
 
-        let claim_periond: u64 = duration.unwrap_or(DEFAULT_CLAIM_PERIOD_SECONDS);
+        let claim_period: u64 = duration.unwrap_or(DEFAULT_CLAIM_PERIOD_SECONDS);
 
         let args: Vec<Val> = vec![&e, platform.into_val(&e), user_id.into_val(&e)];
 
@@ -122,7 +122,7 @@ impl SocialPaymentsTrait for SocialPayments {
 
             let created_at = now(&e);
             let expires_at = created_at
-                .checked_add(claim_periond)
+                .checked_add(claim_period)
                 .expect("expects a valid expiration");
 
             let payment = PendingPayment {

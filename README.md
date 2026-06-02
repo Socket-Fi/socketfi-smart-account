@@ -48,8 +48,7 @@ Wallet → uses → Fee Manager
 Wallet → uses → Identity Registry
 
 Router → resolves → Identity Registry  
-Router → routes → Wallet  
-Router → uses → Fee Manager
+Router → routes → Wallet
 
 Factory → integrates → Upgrade  
 All contracts → use → Shared + Access

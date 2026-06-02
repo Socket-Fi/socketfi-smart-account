@@ -122,7 +122,7 @@ pub fn verify_passkey(
     challenge: BytesN<32>,
     passkey_sig: PasskeySignature,
 ) -> Result<(), WalletError> {
-    let expected_rpid_hash = read_rpid_hash(env);
+    let expected_rpid_hash = read_rpid_hash(env).ok_or(WalletError::RpidNotFound)?;
 
     validate_passkey_assertion_data(
         env,
@@ -149,7 +149,7 @@ pub fn verify_passkey(
 ///
 /// Notes:
 /// - Loads the aggregated BLS public key from storage.
-/// - Hashes the provided payload into G2 using the configured DST.
+/// - Hashes the provided challenge into G2 using the configured DST.
 /// - Verifies the signature using a pairing check.
 /// - Returns `InvalidSignature` if verification fails.
 /// - Updates the nonce only after a successful verification.
@@ -157,7 +157,7 @@ pub fn verify_passkey(
 ///   uses `unwrap()`, so missing key material would panic.
 pub fn verify_bls_key(
     env: &Env,
-    payload: BytesN<32>,
+    challenge: BytesN<32>,
     tx_signature: BytesN<192>,
 ) -> Result<(), WalletError> {
     // Access BLS12-381 operations from the Soroban crypto interface.
@@ -170,8 +170,8 @@ pub fn verify_bls_key(
     // Load the negative G1 generator used in the pairing equation.
     let neg_g1 = G1Affine::from_bytes(g1_group_gen_point(env));
 
-    // Hash the payload into a point in G2 using the configured DST.
-    let msg_g2 = bls.hash_to_g2(&payload.into(), &dst);
+    // Hash the challenge into a point in G2 using the configured DST.
+    let msg_g2 = bls.hash_to_g2(&challenge.into(), &dst);
 
     // Prepare the two input vectors for pairing verification.
     let vp1 = vec![&env, G1Affine::from_bytes(agg_pk), neg_g1];
@@ -211,9 +211,9 @@ pub fn owner_require_auth(
 
 pub fn authorize_recovery(
     env: Env,
-    payload: BytesN<32>,
+    challenge: BytesN<32>,
     agg_bls_sig: BytesN<192>,
 ) -> Result<(), WalletError> {
-    verify_bls_key(&env, payload, agg_bls_sig)?;
+    verify_bls_key(&env, challenge, agg_bls_sig)?;
     Ok(())
 }
