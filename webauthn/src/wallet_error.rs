@@ -38,5 +38,5 @@ pub enum WalletError {
     InvalidLedgerWindow = 2145,
     WindowTooLarge = 2155,
     AllowanceMustBeReset = 2301,
-    InvalidExpiration=2401,
+    InvalidExpiration = 2401,
 }
