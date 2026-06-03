@@ -51,17 +51,20 @@ pub fn send_asset(env: &Env, to: &Address, asset: &Address, amount: i128) {
     client.transfer(&from, to, &amount);
 }
 
-/// Spends tokens via allowance using `transfer_from`.
+/// Spends tokens from the smart wallet using allowance-based `transfer_from`.
 ///
 /// FLOW:
-/// - `spender` is treated as the owner/source account.
-/// - The current contract acts as the spender.
-/// - Tokens are transferred from `spender` to `to`.
+/// - The current contract is the smart wallet holding the tokens.
+/// - `spender` is an external wallet/account approved by the smart wallet.
+/// - The approved `spender` can transfer tokens from the smart wallet
+///   to `to` within the allowed allowance.
 ///
 /// IMPORTANT:
-/// - This requires prior approval for the current contract to spend from `spender`.
-/// - Function name may read like "spender is the spender role", but in token terms
-///   it is actually the token owner/source account passed as `from`.
+/// - The smart wallet (current contract) must have previously approved
+///   `spender` for at least `amount` tokens.
+/// - Internally this executes:
+///   `transfer_from(current_contract, spender, to, amount)`.
+/// - Tokens are deducted from the smart wallet balance.
 pub fn spend_asset(env: &Env, spender: &Address, asset: &Address, amount: i128, to: &Address) {
     let client = token::Client::new(env, asset);
     let from = env.current_contract_address();

@@ -191,7 +191,7 @@ pub fn refund_one(e: &Env, sender: &Address, payment_id: &BytesN<32>) -> Result<
     }
 
     if now(e) < payment.expires_at {
-        return Err(RegistryError::Expired);
+        return Err(RegistryError::NotExpired);
     }
 
     payment.status = PaymentStatus::Refunded;

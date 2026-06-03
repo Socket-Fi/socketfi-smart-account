@@ -5,7 +5,6 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum RegistryError {
     DuplicateValidator = 101,
-    ValidatorAlreadyExists = 103,
     InvalidThreshold = 106,
     NotValidator = 107,
     IncorrectNumberOfSignatures = 108,
@@ -15,6 +14,7 @@ pub enum RegistryError {
     PasskeyAlreadyMapped = 444,
     NotClaimable = 457,
     Expired = 459,
+    NotExpired = 460,
     Unauthorized = 461,
     NotRefundable = 463,
     InvalidAmount = 729,

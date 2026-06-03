@@ -35,11 +35,8 @@ pub enum PaymentStatus {
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
-    Admin,
     IdentityPayments(BytesN<32>),
     SenderPayments(Address),
-    Validators,
     PaymentNonce,
     Payment(BytesN<32>),
-    SupportedTokens,
 }

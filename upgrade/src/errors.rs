@@ -7,7 +7,6 @@ pub enum UpgradeError {
     AlreadyInitialized = 411,
     AnotherUpgradePending = 1001,
     NoPendingUpgradeAction = 1005,
-    UpgradeWasmNotFound = 1007,
     UpgradeTypeNotFound = 1008,
     VotingClosed = 1009,
     VotingStillOngoing = 1010,
