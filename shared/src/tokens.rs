@@ -217,7 +217,6 @@ pub fn write_add_asset(e: &Env, asset: Address) {
 
     m.set(asset, ());
     let key = DataKey::SupportedAssets;
-    bump_persistent(e, &key);
     e.storage().persistent().set(&key, &m);
 }
 
