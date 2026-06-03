@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, token, Address, Env, Map, Vec};
 
+use crate::ttl::bump_persistent;
+
 /// Shared storage keys for token utilities and asset configuration.
 ///
 /// NOTE:
@@ -211,7 +213,9 @@ pub fn write_add_asset(e: &Env, asset: Address) {
     }
 
     m.set(asset, ());
-    e.storage().persistent().set(&DataKey::SupportedAssets, &m);
+    let key = DataKey::SupportedAssets;
+    bump_persistent(e, &key);
+    e.storage().persistent().set(&key, &m);
 }
 
 /// Removes an asset from the supported assets set.
@@ -235,5 +239,7 @@ pub fn write_remove_asset(e: &Env, asset: Address) {
     }
 
     m.remove(asset);
-    e.storage().persistent().set(&DataKey::SupportedAssets, &m);
+    let key = DataKey::SupportedAssets;
+    bump_persistent(e, &key);
+    e.storage().persistent().set(&key, &m);
 }

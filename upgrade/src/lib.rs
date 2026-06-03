@@ -14,6 +14,7 @@ use crate::storage::{
 use crate::types::UpgradeType;
 use crate::voters::{read_has_upgrade_passed, write_add_voter, write_remove_voter};
 
+use socketfi_shared::ttl::bump_persistent;
 use socketfi_shared::{constants::UPGRADE_VOTING_DURATION_SECONDS, events};
 use soroban_sdk::{Address, BytesN, Env, Map, String};
 use storage::{has_active_upgrade_proposal, write_proposal_snapshot};
@@ -119,6 +120,7 @@ pub fn write_cast_vote(
     }
 
     let key = DataKey::VotedList;
+    bump_persistent(e, &key);
     let mut voted: Map<Address, ()> = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
 
     if voted.contains_key(voter.clone()) {

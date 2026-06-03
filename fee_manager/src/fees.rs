@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env};
 
 use crate::data::DataKey;
 use crate::errors::ContractError;
-use socketfi_shared::{constants::PRECISION, tokens::read_is_supported_asset};
+use socketfi_shared::{constants::PRECISION, tokens::read_is_supported_asset, ttl::bump_instance};
 
 // ---------------------------------------------------------------------
 // Base Fee (USDC-denominated)
@@ -13,6 +13,7 @@ use socketfi_shared::{constants::PRECISION, tokens::read_is_supported_asset};
 // - Caller should handle None safely (usually fallback or error)
 
 pub fn read_base_fee(e: &Env) -> Result<i128, ContractError> {
+    bump_instance(e);
     e.storage()
         .instance()
         .get(&DataKey::BaseFee)
@@ -20,7 +21,9 @@ pub fn read_base_fee(e: &Env) -> Result<i128, ContractError> {
 }
 
 pub fn write_base_fee(e: &Env, fee: i128) {
+    bump_instance(e);
     // ASSUMPTION: validation (fee > 0) is handled at contract level
+    bump_instance(e);
     e.storage().instance().set(&DataKey::BaseFee, &fee);
 }
 
@@ -41,6 +44,7 @@ pub fn read_max_deferred_fee(e: &Env) -> Result<i128, ContractError> {
 
 pub fn write_max_deferred_fee(e: &Env, fee: i128) {
     // ASSUMPTION: validated externally (fee > 0 and >= base_fee)
+    bump_instance(e);
     e.storage().instance().set(&DataKey::MaxDeferredFee, &fee);
 }
 
@@ -63,6 +67,7 @@ pub fn write_deferred_fee(e: &Env, user: &Address, amount: i128) {
     // NOTE:
     // - No validation here → contract layer must ensure correctness
     // - Setting to 0 effectively "clears" deferred fee
+    bump_instance(e);
     e.storage()
         .persistent()
         .set(&DataKey::DeferredFee(user.clone()), &amount);

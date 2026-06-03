@@ -1,3 +1,4 @@
+use socketfi_shared::ttl::bump_persistent;
 use soroban_sdk::{BytesN, Env, Vec};
 
 use crate::data::DataKey;
@@ -22,7 +23,9 @@ pub fn write_add_validator(e: &Env, v: BytesN<32>) {
     }
 
     m.set(v, ());
-    e.storage().persistent().set(&DataKey::Validators, &m);
+    let key = DataKey::Validators;
+    bump_persistent(e, &key);
+    e.storage().persistent().set(&key, &m);
 }
 
 /// Remove validator from the validator set.
@@ -42,7 +45,11 @@ pub fn write_remove_validator(e: &Env, v: BytesN<32>) {
 
     m.remove(v);
 
-    e.storage().persistent().set(&DataKey::Validators, &m);
+    let key = DataKey::Validators;
+
+    bump_persistent(e, &key);
+
+    e.storage().persistent().set(&key, &m);
 }
 
 /// Check whether a validator is currently in the validator set.
@@ -51,19 +58,23 @@ pub fn write_remove_validator(e: &Env, v: BytesN<32>) {
 /// - `true` if present
 /// - `false` otherwise
 pub fn read_is_validator(e: &Env, v: BytesN<32>) -> bool {
+    let key = DataKey::Validators;
+    bump_persistent(e, &key);
     e.storage()
         .persistent()
-        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&DataKey::Validators)
+        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .map(|m| m.contains_key(v))
         .unwrap_or(false)
 }
 
 /// Return all validator public keys.
 pub fn read_validators(e: &Env) -> Vec<BytesN<32>> {
+    let key = DataKey::Validators;
+    bump_persistent(e, &key);
     let m = e
         .storage()
         .persistent()
-        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&DataKey::Validators)
+        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .unwrap_or(soroban_sdk::Map::new(e));
 
     m.keys()
@@ -75,9 +86,11 @@ pub fn read_validators(e: &Env) -> Vec<BytesN<32>> {
 /// - Equal to validator count
 /// - Returns `0` if validator map is missing
 pub fn read_threshold(e: &Env) -> u32 {
+    let key = DataKey::Validators;
+    bump_persistent(e, &key);
     e.storage()
         .persistent()
-        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&DataKey::Validators)
+        .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .map(|m| m.len())
         .unwrap_or(0)
 }

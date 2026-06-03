@@ -16,6 +16,7 @@ use crate::{
 use socketfi_shared::{
     bls::g1_group_gen_point,
     constants::{DST, MAX_AUTH_WINDOW_LEDGER},
+    ttl::bump_instance,
 };
 
 pub fn read_nonce(env: &Env) -> u64 {
@@ -26,6 +27,7 @@ pub fn write_nonce(env: &Env, nonce: u64) {
 }
 
 pub fn increment_nonce(env: &Env) -> u64 {
+    bump_instance(env);
     let nonce = read_nonce(env);
     let next = nonce.saturating_add(1);
 

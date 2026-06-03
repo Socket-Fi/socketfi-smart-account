@@ -1,6 +1,8 @@
 use soroban_sdk::{xdr::ToXdr, Address, Bytes, Env, String};
 
-use socketfi_shared::{registry_errors::RegistryError, utils::userid_wallet_key};
+use socketfi_shared::{
+    registry_errors::RegistryError, ttl::bump_persistent, utils::userid_wallet_key,
+};
 
 use crate::data::DataKey;
 
@@ -20,6 +22,7 @@ pub fn read_userid_wallet_map(
     user_id: String,
 ) -> Result<Option<Address>, RegistryError> {
     let key = userid_wallet_key(e, platform, user_id)?;
+    bump_persistent(e, &key);
     Ok(e.storage().persistent().get(&key))
 }
 
@@ -34,6 +37,7 @@ pub fn read_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
+    bump_persistent(e, &key);
 
     Ok(e.storage().persistent().get(&key).unwrap_or(false))
 }
@@ -49,7 +53,7 @@ pub fn write_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
-
+    bump_persistent(e, &key);
     e.storage().persistent().set(&key, &true);
 
     Ok(())
@@ -66,6 +70,7 @@ pub fn delete_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
+    bump_persistent(e, &key);
 
     e.storage().persistent().remove(&key);
 
@@ -92,7 +97,7 @@ pub fn write_userid_wallet_map(
     wallet: Address,
 ) -> Result<(), RegistryError> {
     let key = userid_wallet_key(e, platform, userid)?;
-
+    bump_persistent(e, &key);
     // Prevent silent overwrite of an existing identity binding.
     if e.storage().persistent().has(&key) {
         return Err(RegistryError::UseridAlreadyMapped);

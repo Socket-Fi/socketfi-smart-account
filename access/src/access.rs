@@ -1,3 +1,4 @@
+use socketfi_shared::ttl::bump_instance;
 use soroban_sdk::{contracttype, Address, Bytes, Env};
 
 /// Shared access/config storage keys.
@@ -55,6 +56,7 @@ pub fn has_admin(e: &Env) -> bool {
 ///   contract is expected to remain usable long-term.
 pub fn read_admin(e: &Env) -> Option<Address> {
     let key = DataKey::Admin;
+    bump_instance(e);
     e.storage().instance().get(&key)
 }
 
@@ -70,6 +72,7 @@ pub fn read_admin(e: &Env) -> Option<Address> {
 ///   - authenticated admin update paths
 /// - Misuse of this helper in an unprotected path would compromise admin control.
 pub fn write_admin(e: &Env, admin: &Address) {
+    bump_instance(e);
     let key = DataKey::Admin;
     e.storage().instance().set(&key, admin);
 }
@@ -107,6 +110,7 @@ pub fn authenticate_admin(e: &Env) {
 /// - Reads from instance storage; instance TTL must be maintained.
 pub fn read_factory(e: &Env) -> Option<Address> {
     let key = DataKey::Factory;
+    bump_instance(e);
     e.storage().instance().get(&key)
 }
 
@@ -122,6 +126,7 @@ pub fn read_factory(e: &Env) -> Option<Address> {
 ///   (for example, whether factory equals another configured address).
 pub fn write_factory(e: &Env, factory: &Address) {
     let key = DataKey::Factory;
+    bump_instance(e);
     e.storage().instance().set(&key, factory);
 }
 
@@ -139,6 +144,7 @@ pub fn write_factory(e: &Env, factory: &Address) {
 /// - Reads from instance storage; instance TTL must be maintained.
 pub fn read_social_router(e: &Env) -> Option<Address> {
     let key = DataKey::SocialPayments;
+    bump_instance(e);
     e.storage().instance().get(&key)
 }
 
@@ -154,6 +160,7 @@ pub fn read_social_router(e: &Env) -> Option<Address> {
 ///   (for example, uniqueness vs admin/factory or other address constraints).
 pub fn write_social_router(e: &Env, social_router: &Address) {
     let key = DataKey::SocialPayments;
+    bump_instance(e);
     e.storage().instance().set(&key, social_router);
 }
 
@@ -171,6 +178,7 @@ pub fn write_social_router(e: &Env, social_router: &Address) {
 /// - Reads from instance storage; instance TTL must be maintained.
 pub fn read_registry(e: &Env) -> Option<Address> {
     let key = DataKey::Registry;
+    bump_instance(e);
     e.storage().instance().get(&key)
 }
 
@@ -184,6 +192,7 @@ pub fn read_registry(e: &Env) -> Option<Address> {
 /// - Caller must enforce authorization where required.
 pub fn write_registry(e: &Env, registry: &Address) {
     let key = DataKey::Registry;
+    bump_instance(e);
     e.storage().instance().set(&key, registry);
 }
 
@@ -201,6 +210,7 @@ pub fn write_registry(e: &Env, registry: &Address) {
 /// - Reads from instance storage; instance TTL must be maintained.
 pub fn read_fee_manager(e: &Env) -> Option<Address> {
     let key = DataKey::FeeManager;
+    bump_instance(e);
     e.storage().instance().get(&key)
 }
 
@@ -214,5 +224,6 @@ pub fn read_fee_manager(e: &Env) -> Option<Address> {
 /// - Caller must enforce authorization where required.
 pub fn write_fee_manager(e: &Env, fee_manager: &Address) {
     let key = DataKey::FeeManager;
+    bump_instance(e);
     e.storage().instance().set(&key, fee_manager);
 }

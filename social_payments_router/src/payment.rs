@@ -1,6 +1,7 @@
 use socketfi_access::access::read_registry;
 use socketfi_shared::{
-    registry_errors::RegistryError, tokens::send_asset, utils::userid_payment_key,
+    registry_errors::RegistryError, tokens::send_asset, ttl::bump_persistent,
+    utils::userid_payment_key,
 };
 use soroban_sdk::{xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val, Vec};
 
@@ -85,6 +86,7 @@ pub fn append_identity_payment(
     let id_key = userid_payment_key(e, platform, user_id)?;
     let storage_key = DataKey::IdentityPayments(id_key);
 
+    bump_persistent(e, &storage_key);
     let mut ids = e
         .storage()
         .persistent()
@@ -107,7 +109,7 @@ pub fn append_identity_payment(
 /// - No pruning of old or completed payments.
 pub fn append_sender_payment(e: &Env, from: Address, payment_id: BytesN<32>) {
     let storage_key = DataKey::SenderPayments(from);
-
+    bump_persistent(e, &storage_key);
     let mut ids = e
         .storage()
         .persistent()

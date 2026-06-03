@@ -1,17 +1,18 @@
 use crate::errors::UpgradeError;
 use crate::storage::{read_proposal_approval_threshold, read_proposal_voters, DataKey};
 use socketfi_shared::constants::VOTING_THRESHOLD;
+use socketfi_shared::ttl::bump_persistent;
 use soroban_sdk::{Address, Env, Map};
 
 pub fn read_voters(e: &Env) -> Map<Address, ()> {
-    e.storage()
-        .persistent()
-        .get(&DataKey::VotersList)
-        .unwrap_or(Map::new(e))
+    let key = DataKey::VotersList;
+    bump_persistent(e, &key);
+    e.storage().persistent().get(&key).unwrap_or(Map::new(e))
 }
 
 pub fn write_voters(e: &Env, voters: &Map<Address, ()>) {
-    e.storage().persistent().set(&DataKey::VotersList, voters);
+    let key = DataKey::VotersList;
+    e.storage().persistent().set(&key, voters);
 }
 
 pub fn write_add_voter(e: &Env, voter: &Address) {

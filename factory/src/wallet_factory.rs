@@ -4,6 +4,7 @@ use socketfi_access::access::{read_fee_manager, read_registry, read_social_route
 use socketfi_shared::{
     bls::{g1_group_gen_point, is_g1_infinity},
     constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
+    ttl::bump_instance,
 };
 
 use socketfi_webauthn::{
@@ -32,6 +33,7 @@ fn validate_network(e: &Env, network: &Symbol) -> Result<(), WalletError> {
 }
 
 pub fn read_rpid_hash(e: &Env) -> Result<BytesN<32>, WalletError> {
+    bump_instance(e);
     e.storage()
         .instance()
         .get(&DataKey::RPIDHash)
@@ -40,7 +42,7 @@ pub fn read_rpid_hash(e: &Env) -> Result<BytesN<32>, WalletError> {
 pub fn write_rpid_hash(e: &Env, rpid: &String) {
     let rpid_bytes = rpid.to_bytes();
     let rpid_hash: BytesN<32> = e.crypto().sha256(&rpid_bytes).into();
-
+    bump_instance(e);
     e.storage().instance().set(&DataKey::RPIDHash, &rpid_hash);
 }
 

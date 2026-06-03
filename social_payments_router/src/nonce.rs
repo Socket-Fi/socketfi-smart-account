@@ -1,3 +1,4 @@
+use socketfi_shared::ttl::bump_instance;
 use soroban_sdk::Env;
 
 use crate::data::DataKey;
@@ -26,5 +27,6 @@ pub fn read_payment_nonce(e: &Env) -> u64 {
 /// Notes:
 /// - Overwrites existing nonce value.
 pub fn write_payment_nonce(e: &Env, nonce: u64) {
+    bump_instance(e);
     e.storage().instance().set(&DataKey::PaymentNonce, &nonce);
 }

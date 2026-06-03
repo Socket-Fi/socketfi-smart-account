@@ -1,3 +1,4 @@
+use socketfi_shared::ttl::{bump_instance, bump_persistent};
 use socketfi_webauthn::wallet_error::WalletError;
 use soroban_sdk::{crypto::bls12_381::G1Affine, Address, BytesN, Env, Vec};
 
@@ -22,6 +23,7 @@ pub fn is_initialized(env: &Env) -> bool {
 /// - Uses instance storage because owner data is contract instance state.
 pub fn read_owner(env: &Env) -> Option<Address> {
     let key = DataKey::Owner;
+    bump_instance(env);
     env.storage().instance().get(&key)
 }
 
@@ -32,6 +34,7 @@ pub fn read_owner(env: &Env) -> Option<Address> {
 /// - Overwrites any previously stored owner value.
 pub fn write_owner(env: &Env, owner: &Address) {
     let key = DataKey::Owner;
+    bump_instance(env);
     env.storage().instance().set(&key, owner);
 }
 
@@ -88,16 +91,20 @@ pub fn write_agg_bls_key(env: &Env, bls_agg: BytesN<96>) -> Result<(), WalletErr
 /// - Returns `None` if the wallet has not yet stored an aggregated key.
 pub fn read_agg_bls_key(env: &Env) -> Option<BytesN<96>> {
     let key = DataKey::AggregatedBlsKey;
+
+    bump_persistent(&env, &key);
     env.storage().persistent().get(&key)
 }
 
 pub fn read_rpid_hash(env: &Env) -> Option<BytesN<32>> {
     let key = DataKey::RpidHash;
+    bump_instance(env);
     env.storage().instance().get(&key)
 }
 
 pub fn write_rpid_hash(env: &Env, rpid_hash: &BytesN<32>) {
     let key = DataKey::RpidHash;
+    bump_instance(env);
     env.storage().instance().set(&key, rpid_hash);
 }
 
@@ -107,7 +114,9 @@ pub fn write_rpid_hash(env: &Env, rpid_hash: &BytesN<32>) {
 /// - Writes the provided passkey bytes under `DataKey::Passkey`.
 /// - Overwrites any previously stored passkey value.
 pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
-    env.storage().persistent().set(&DataKey::Passkey, &passkey);
+    let key = DataKey::Passkey;
+    bump_persistent(&env, &key);
+    env.storage().persistent().set(&key, &passkey);
 }
 
 /// Read the stored passkey payload from persistent storage.
@@ -117,5 +126,6 @@ pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
 /// - Returns `None` if no passkey is currently set.
 pub fn read_passkey(env: &Env) -> Option<BytesN<65>> {
     let key = DataKey::Passkey;
+    bump_persistent(&env, &key);
     env.storage().persistent().get(&key)
 }

@@ -1,5 +1,6 @@
 use crate::errors::UpgradeError;
 use crate::types::UpgradeType;
+use socketfi_shared::ttl::bump_instance;
 use soroban_sdk::{contracttype, Address, BytesN, Env, Map, String};
 
 #[derive(Clone)]
@@ -41,6 +42,7 @@ pub fn read_future_wasm(e: &Env) -> Option<BytesN<32>> {
 }
 
 pub fn read_proposal_type(e: &Env) -> Option<UpgradeType> {
+    bump_instance(e);
     e.storage().instance().get(&DataKey::ProposalType)
 }
 
@@ -51,7 +53,7 @@ pub fn write_future_wasm(
 ) -> Result<(), UpgradeError> {
     let proposal_type =
         UpgradeType::upgrade_type(proposal_type).ok_or(UpgradeError::UpgradeTypeNotFound)?;
-
+    bump_instance(e);
     e.storage().instance().set(&DataKey::FutureWASM, wasm);
     e.storage()
         .instance()
@@ -61,12 +63,14 @@ pub fn write_future_wasm(
 }
 
 pub fn write_wallet_wasm_version(e: &Env, wasm_hash: &BytesN<32>) {
+    bump_instance(e);
     e.storage()
         .instance()
         .set(&DataKey::WalletVersion, wasm_hash);
 }
 
 pub fn read_wallet_wasm_version(e: &Env) -> Option<BytesN<32>> {
+    bump_instance(e);
     e.storage().instance().get(&DataKey::WalletVersion)
 }
 
