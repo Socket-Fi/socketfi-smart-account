@@ -98,14 +98,17 @@ pub fn read_proposal_approval_threshold(e: &Env) -> Result<u32, UpgradeError> {
 
 pub fn read_proposal_voters(e: &Env) -> Result<Map<Address, ()>, UpgradeError> {
     let key = DataKey::ProposalVoters;
-    let voters = e
+
+    let voters: Map<Address, ()> = e
         .storage()
         .persistent()
         .get(&key)
-        .ok_or(UpgradeError::NoPendingUpgradeAction);
+        .ok_or(UpgradeError::NoPendingUpgradeAction)?;
+
     bump_instance(e);
     bump_persistent(e, &key);
-    voters
+
+    Ok(voters)
 }
 
 pub fn clear_pending_upgrade_state(e: &Env) {

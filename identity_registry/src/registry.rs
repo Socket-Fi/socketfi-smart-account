@@ -22,8 +22,13 @@ pub fn read_userid_wallet_map(
     user_id: String,
 ) -> Result<Option<Address>, RegistryError> {
     let key = userid_wallet_key(e, platform, user_id)?;
-    bump_persistent(e, &key);
-    Ok(e.storage().persistent().get(&key))
+
+    if let Some(address) = e.storage().persistent().get(&key) {
+        bump_persistent(e, &key);
+        Ok(Some(address))
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn read_wallet_is_mapped(

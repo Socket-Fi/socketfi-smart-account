@@ -100,9 +100,9 @@ pub fn read_fee_asset_rate(e: &Env, asset: &Address) -> Result<i128, ContractErr
         .storage()
         .persistent()
         .get(&key)
-        .ok_or(ContractError::FeeRateNotSet);
+        .ok_or(ContractError::FeeRateNotSet)?;
     bump_persistent(e, &key);
-    rate
+    Ok(rate)
 }
 
 pub fn write_fee_asset_rate(e: &Env, asset: &Address, rate: i128) {
