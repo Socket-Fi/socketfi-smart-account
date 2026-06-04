@@ -242,6 +242,6 @@ pub fn write_remove_asset(e: &Env, asset: Address) {
 
     m.remove(asset);
     let key = DataKey::SupportedAssets;
-    bump_persistent(e, &key);
     e.storage().persistent().set(&key, &m);
+    bump_persistent(e, &key);
 }

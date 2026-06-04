@@ -24,8 +24,8 @@ pub fn write_add_validator(e: &Env, v: BytesN<32>) {
 
     m.set(v, ());
     let key = DataKey::Validators;
-    bump_persistent(e, &key);
     e.storage().persistent().set(&key, &m);
+    bump_persistent(e, &key);
 }
 
 /// Remove validator from the validator set.
@@ -47,9 +47,8 @@ pub fn write_remove_validator(e: &Env, v: BytesN<32>) {
 
     let key = DataKey::Validators;
 
-    bump_persistent(e, &key);
-
     e.storage().persistent().set(&key, &m);
+    bump_persistent(e, &key);
 }
 
 /// Check whether a validator is currently in the validator set.

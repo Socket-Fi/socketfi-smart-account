@@ -120,7 +120,7 @@ pub fn write_cast_vote(
     }
 
     let key = DataKey::VotedList;
-    bump_persistent(e, &key);
+
     let mut voted: Map<Address, ()> = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
 
     if voted.contains_key(voter.clone()) {
@@ -129,6 +129,7 @@ pub fn write_cast_vote(
 
     voted.set(voter.clone(), ());
     e.storage().persistent().set(&key, &voted);
+    bump_persistent(e, &key);
 
     events::VoteEvent {
         wasm: wasm_hash.clone(),

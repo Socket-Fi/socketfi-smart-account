@@ -115,8 +115,8 @@ pub fn write_rpid_hash(env: &Env, rpid_hash: &BytesN<32>) {
 /// - Overwrites any previously stored passkey value.
 pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
     let key = DataKey::Passkey;
-    bump_persistent(&env, &key);
     env.storage().persistent().set(&key, &passkey);
+    bump_persistent(&env, &key);
 }
 
 /// Read the stored passkey payload from persistent storage.

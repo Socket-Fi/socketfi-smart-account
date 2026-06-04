@@ -86,7 +86,6 @@ pub fn append_identity_payment(
     let id_key = userid_payment_key(e, platform, user_id)?;
     let storage_key = DataKey::IdentityPayments(id_key);
 
-    bump_persistent(e, &storage_key);
     let mut ids = e
         .storage()
         .persistent()
@@ -95,6 +94,7 @@ pub fn append_identity_payment(
 
     ids.push_back(payment_id);
     e.storage().persistent().set(&storage_key, &ids);
+    bump_persistent(e, &storage_key);
 
     Ok(())
 }

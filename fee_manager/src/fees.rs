@@ -21,10 +21,9 @@ pub fn read_base_fee(e: &Env) -> Result<i128, ContractError> {
 }
 
 pub fn write_base_fee(e: &Env, fee: i128) {
-    bump_instance(e);
     // ASSUMPTION: validation (fee > 0) is handled at contract level
-    bump_instance(e);
     e.storage().instance().set(&DataKey::BaseFee, &fee);
+    bump_instance(e);
 }
 
 // ---------------------------------------------------------------------

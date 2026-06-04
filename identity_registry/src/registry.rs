@@ -53,8 +53,8 @@ pub fn write_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
-    bump_persistent(e, &key);
     e.storage().persistent().set(&key, &true);
+    bump_persistent(e, &key);
 
     Ok(())
 }
@@ -70,7 +70,6 @@ pub fn delete_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
-    bump_persistent(e, &key);
 
     e.storage().persistent().remove(&key);
 
@@ -97,13 +96,14 @@ pub fn write_userid_wallet_map(
     wallet: Address,
 ) -> Result<(), RegistryError> {
     let key = userid_wallet_key(e, platform, userid)?;
-    bump_persistent(e, &key);
+
     // Prevent silent overwrite of an existing identity binding.
     if e.storage().persistent().has(&key) {
         return Err(RegistryError::UseridAlreadyMapped);
     }
 
     e.storage().persistent().set(&key, &wallet);
+    bump_persistent(e, &key);
     Ok(())
 }
 
