@@ -1,16 +1,20 @@
 use crate::errors::UpgradeError;
 use crate::storage::{read_proposal_approval_threshold, read_proposal_voters, DataKey};
 use socketfi_shared::constants::VOTING_THRESHOLD;
+use socketfi_shared::ttl::bump_persistent;
 use soroban_sdk::{Address, Env, Map};
 
 pub fn read_voters(e: &Env) -> Map<Address, ()> {
     let key = DataKey::VotersList;
-    e.storage().persistent().get(&key).unwrap_or(Map::new(e))
+    let voters = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
+    bump_persistent(e, &key);
+    voters
 }
 
 pub fn write_voters(e: &Env, voters: &Map<Address, ()>) {
     let key = DataKey::VotersList;
     e.storage().persistent().set(&key, voters);
+    bump_persistent(e, &key);
 }
 
 pub fn write_add_voter(e: &Env, voter: &Address) {
@@ -50,11 +54,8 @@ pub fn compute_approval_threshold(voter_count: u32) -> u32 {
 }
 
 pub fn read_has_upgrade_passed(e: &Env) -> Result<(u32, bool), UpgradeError> {
-    let voted: Map<Address, ()> = e
-        .storage()
-        .persistent()
-        .get(&DataKey::VotedList)
-        .unwrap_or(Map::new(e));
+    let key = DataKey::VotedList;
+    let voted: Map<Address, ()> = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
 
     let proposal_voters = read_proposal_voters(e)?;
     let required_threshold = read_proposal_approval_threshold(e)?;
@@ -66,6 +67,7 @@ pub fn read_has_upgrade_passed(e: &Env) -> Result<(u32, bool), UpgradeError> {
             valid_vote_count += 1;
         }
     }
+    bump_persistent(e, &key);
 
     Ok((valid_vote_count, valid_vote_count >= required_threshold))
 }

@@ -58,23 +58,26 @@ pub fn write_remove_validator(e: &Env, v: BytesN<32>) {
 /// - `false` otherwise
 pub fn read_is_validator(e: &Env, v: BytesN<32>) -> bool {
     let key = DataKey::Validators;
-    bump_persistent(e, &key);
-    e.storage()
+
+    let is_validator = e
+        .storage()
         .persistent()
         .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .map(|m| m.contains_key(v))
-        .unwrap_or(false)
+        .unwrap_or(false);
+    bump_persistent(e, &key);
+    is_validator
 }
 
 /// Return all validator public keys.
 pub fn read_validators(e: &Env) -> Vec<BytesN<32>> {
     let key = DataKey::Validators;
-    bump_persistent(e, &key);
     let m = e
         .storage()
         .persistent()
         .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .unwrap_or(soroban_sdk::Map::new(e));
+    bump_persistent(e, &key);
 
     m.keys()
 }
@@ -86,10 +89,13 @@ pub fn read_validators(e: &Env) -> Vec<BytesN<32>> {
 /// - Returns `0` if validator map is missing
 pub fn read_threshold(e: &Env) -> u32 {
     let key = DataKey::Validators;
-    bump_persistent(e, &key);
-    e.storage()
+
+    let t = e
+        .storage()
         .persistent()
         .get::<_, soroban_sdk::Map<BytesN<32>, ()>>(&key)
         .map(|m| m.len())
-        .unwrap_or(0)
+        .unwrap_or(0);
+    bump_persistent(e, &key);
+    t
 }

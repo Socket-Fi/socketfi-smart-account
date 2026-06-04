@@ -53,9 +53,9 @@ pub fn generate_payment_id(
 /// Audit:
 /// - Caller must ensure correct state transitions (no overwrite of finalized states).
 pub fn write_payment(e: &Env, payment_id: &BytesN<32>, payment: &PendingPayment) {
-    e.storage()
-        .persistent()
-        .set(&DataKey::Payment(payment_id.clone()), &payment);
+    let storage_key = DataKey::Payment(payment_id.clone());
+    e.storage().persistent().set(&storage_key, &payment);
+    bump_persistent(e, &storage_key);
 }
 
 /// Read payment by id.
@@ -64,9 +64,10 @@ pub fn write_payment(e: &Env, payment_id: &BytesN<32>, payment: &PendingPayment)
 /// - `Some(PendingPayment)` if exists
 /// - `None` if missing
 pub fn read_payment(e: &Env, payment_id: &BytesN<32>) -> Option<PendingPayment> {
-    e.storage()
-        .persistent()
-        .get(&DataKey::Payment(payment_id.clone()))
+    let storage_key = DataKey::Payment(payment_id.clone());
+    let payment = e.storage().persistent().get(&storage_key);
+    bump_persistent(e, &storage_key);
+    payment
 }
 
 /// Append payment id to identity index.
@@ -109,7 +110,6 @@ pub fn append_identity_payment(
 /// - No pruning of old or completed payments.
 pub fn append_sender_payment(e: &Env, from: Address, payment_id: BytesN<32>) {
     let storage_key = DataKey::SenderPayments(from);
-    bump_persistent(e, &storage_key);
     let mut ids = e
         .storage()
         .persistent()
@@ -118,6 +118,7 @@ pub fn append_sender_payment(e: &Env, from: Address, payment_id: BytesN<32>) {
 
     ids.push_back(payment_id);
     e.storage().persistent().set(&storage_key, &ids);
+    bump_persistent(e, &storage_key);
 }
 
 /// Claim a pending payment.
@@ -217,10 +218,13 @@ pub fn read_identity_payment_ids(
     let id_key = userid_payment_key(e, platform, user_id)?;
     let storage_key = DataKey::IdentityPayments(id_key);
 
-    Ok(e.storage()
+    let payment_id = e
+        .storage()
         .persistent()
         .get::<_, Vec<BytesN<32>>>(&storage_key)
-        .unwrap_or_else(|| Vec::new(e)))
+        .unwrap_or_else(|| Vec::new(e));
+    bump_persistent(e, &storage_key);
+    Ok(payment_id)
 }
 
 /// Read payment ids for sender.
@@ -230,8 +234,12 @@ pub fn read_identity_payment_ids(
 pub fn read_sender_payment_ids(e: &Env, sender: Address) -> Vec<BytesN<32>> {
     let storage_key = DataKey::SenderPayments(sender);
 
-    e.storage()
+    let payment_ids = e
+        .storage()
         .persistent()
         .get::<_, Vec<BytesN<32>>>(&storage_key)
-        .unwrap_or_else(|| Vec::new(e))
+        .unwrap_or_else(|| Vec::new(e));
+
+    bump_persistent(e, &storage_key);
+    payment_ids
 }

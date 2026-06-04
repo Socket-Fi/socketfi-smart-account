@@ -1,6 +1,6 @@
 use crate::errors::UpgradeError;
 use crate::types::UpgradeType;
-use socketfi_shared::ttl::bump_instance;
+use socketfi_shared::ttl::{bump_instance, bump_persistent};
 use soroban_sdk::{contracttype, Address, BytesN, Env, Map, String};
 
 #[derive(Clone)]
@@ -83,9 +83,10 @@ pub fn write_proposal_snapshot(e: &Env, approval_threshold: u32, voters: &Map<Ad
         .instance()
         .set(&DataKey::ProposalApprovalThreshold, &approval_threshold);
 
-    e.storage()
-        .persistent()
-        .set(&DataKey::ProposalVoters, voters);
+    let key = DataKey::ProposalVoters;
+    e.storage().persistent().set(&key, voters);
+    bump_instance(e);
+    bump_persistent(e, &key);
 }
 
 pub fn read_proposal_approval_threshold(e: &Env) -> Result<u32, UpgradeError> {
@@ -96,10 +97,15 @@ pub fn read_proposal_approval_threshold(e: &Env) -> Result<u32, UpgradeError> {
 }
 
 pub fn read_proposal_voters(e: &Env) -> Result<Map<Address, ()>, UpgradeError> {
-    e.storage()
+    let key = DataKey::ProposalVoters;
+    let voters = e
+        .storage()
         .persistent()
-        .get(&DataKey::ProposalVoters)
-        .ok_or(UpgradeError::NoPendingUpgradeAction)
+        .get(&key)
+        .ok_or(UpgradeError::NoPendingUpgradeAction);
+    bump_instance(e);
+    bump_persistent(e, &key);
+    voters
 }
 
 pub fn clear_pending_upgrade_state(e: &Env) {

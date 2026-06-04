@@ -2,7 +2,11 @@ use soroban_sdk::{Address, Env};
 
 use crate::data::DataKey;
 use crate::errors::ContractError;
-use socketfi_shared::{constants::PRECISION, tokens::read_is_supported_asset, ttl::bump_instance};
+use socketfi_shared::{
+    constants::PRECISION,
+    tokens::read_is_supported_asset,
+    ttl::{bump_instance, bump_persistent},
+};
 
 // ---------------------------------------------------------------------
 // Base Fee (USDC-denominated)
@@ -35,6 +39,7 @@ pub fn write_base_fee(e: &Env, fee: i128) {
 // - Returns Result (unlike base fee) → treated as REQUIRED config
 
 pub fn read_max_deferred_fee(e: &Env) -> Result<i128, ContractError> {
+    bump_instance(e);
     e.storage()
         .instance()
         .get(&DataKey::MaxDeferredFee)
@@ -56,20 +61,19 @@ pub fn write_max_deferred_fee(e: &Env, fee: i128) {
 // - Uses Address as part of DataKey → isolated per user
 
 pub fn read_deferred_fee(e: &Env, user: &Address) -> i128 {
-    e.storage()
-        .persistent()
-        .get(&DataKey::DeferredFee(user.clone()))
-        .unwrap_or(0)
+    let key = DataKey::DeferredFee(user.clone());
+    let deferred = e.storage().persistent().get(&key).unwrap_or(0);
+    bump_persistent(e, &key);
+    deferred
 }
 
 pub fn write_deferred_fee(e: &Env, user: &Address, amount: i128) {
     // NOTE:
     // - No validation here → contract layer must ensure correctness
     // - Setting to 0 effectively "clears" deferred fee
-    bump_instance(e);
-    e.storage()
-        .persistent()
-        .set(&DataKey::DeferredFee(user.clone()), &amount);
+    let key = DataKey::DeferredFee(user.clone());
+    e.storage().persistent().set(&key, &amount);
+    bump_persistent(e, &key);
 }
 
 // ---------------------------------------------------------------------
@@ -86,20 +90,24 @@ pub fn read_fee_asset_rate(e: &Env, asset: &Address) -> Result<i128, ContractErr
     if !read_is_supported_asset(&e, asset.clone()) {
         return Err(ContractError::UnsupportedFeeAsset);
     }
+    let key = DataKey::FeeAssetRate(asset.clone());
 
-    e.storage()
+    let rate = e
+        .storage()
         .persistent()
-        .get(&DataKey::FeeAssetRate(asset.clone()))
-        .ok_or(ContractError::FeeRateNotSet)
+        .get(&key)
+        .ok_or(ContractError::FeeRateNotSet);
+    bump_persistent(e, &key);
+    rate
 }
 
 pub fn write_fee_asset_rate(e: &Env, asset: &Address, rate: i128) {
     // ASSUMPTION:
     // - rate > 0 validated externally
     // - asset already added to supported assets
-    e.storage()
-        .persistent()
-        .set(&DataKey::FeeAssetRate(asset.clone()), &rate);
+    let key = DataKey::FeeAssetRate(asset.clone());
+    e.storage().persistent().set(&key, &rate);
+    bump_persistent(e, &key);
 }
 
 pub fn delete_fee_asset_rate(e: &Env, asset: &Address) {

@@ -1,6 +1,6 @@
 use soroban_sdk::{contracttype, token, Address, Env, Map, Vec};
 
-use crate::ttl::bump_persistent;
+use crate::ttl::{bump_instance, bump_persistent};
 
 /// Shared storage keys for token utilities and asset configuration.
 ///
@@ -124,9 +124,9 @@ pub fn write_approve(env: &Env, asset: &Address, spender: &Address, amount: &i12
 /// NOTE:
 /// - This is a relative offset from the current ledger sequence at approval time.
 pub fn write_allowance_expiration(env: &Env, ledger_offset: u32) {
-    env.storage()
-        .persistent()
-        .set(&DataKey::AllowanceExpiration, &ledger_offset);
+    let key = DataKey::AllowanceExpiration;
+    env.storage().persistent().set(&key, &ledger_offset);
+    bump_persistent(env, &key);
 }
 
 /// Returns the configured allowance expiration offset.
@@ -134,10 +134,10 @@ pub fn write_allowance_expiration(env: &Env, ledger_offset: u32) {
 /// DEFAULT:
 /// - `17_000` ledgers if not explicitly configured.
 pub fn read_allowance_expiration(env: &Env) -> u32 {
-    env.storage()
-        .persistent()
-        .get(&DataKey::AllowanceExpiration)
-        .unwrap_or(17_000)
+    let key = DataKey::AllowanceExpiration;
+    let expiration = env.storage().persistent().get(&key).unwrap_or(17_000);
+    bump_persistent(env, &key);
+    expiration
 }
 
 // -----------------------------------------------------------------------------
@@ -153,11 +153,13 @@ pub fn read_allowance_expiration(env: &Env) -> u32 {
 /// NOTE:
 /// - A missing default also falls back to default.
 pub fn read_limit(env: &Env, asset: Address) -> Option<i128> {
+    bump_instance(env);
     env.storage().instance().get(&DataKey::SpendLimit(asset))
 }
 
 /// Stores the spend limit for a specific asset.
 pub fn write_limit(env: &Env, asset: Address, limit: i128) {
+    bump_instance(env);
     env.storage()
         .instance()
         .set(&DataKey::SpendLimit(asset), &limit);
@@ -173,11 +175,15 @@ pub fn write_limit(env: &Env, asset: Address, limit: i128) {
 /// - Defaults to `false` if the storage key does not exist.
 /// - Uses `Map<Address, ()>` as a set representation.
 pub fn read_is_supported_asset(e: &Env, asset: Address) -> bool {
-    e.storage()
+    let key = DataKey::SupportedAssets;
+    let is_supported = e
+        .storage()
         .persistent()
-        .get::<_, Map<Address, ()>>(&DataKey::SupportedAssets)
+        .get::<_, Map<Address, ()>>(&key)
         .map(|m| m.contains_key(asset))
-        .unwrap_or(false)
+        .unwrap_or(false);
+    bump_persistent(e, &key);
+    is_supported
 }
 
 /// Returns all supported assets.
@@ -186,11 +192,13 @@ pub fn read_is_supported_asset(e: &Env, asset: Address) -> bool {
 /// - Returns an empty vector if the set has not been initialized.
 /// - Ordering depends on map key ordering and should not be relied on.
 pub fn read_supported_assets(e: &Env) -> Vec<Address> {
+    let key = DataKey::SupportedAssets;
     let m = e
         .storage()
         .persistent()
-        .get::<_, Map<Address, ()>>(&DataKey::SupportedAssets)
+        .get::<_, Map<Address, ()>>(&key)
         .unwrap_or_else(|| Map::new(e));
+    bump_persistent(e, &key);
 
     m.keys()
 }
@@ -205,10 +213,11 @@ pub fn read_supported_assets(e: &Env) -> Vec<Address> {
 /// - This function does NOT return an error on duplicates.
 /// - Authorization must be enforced by the caller.
 pub fn write_add_asset(e: &Env, asset: Address) {
+    let key = DataKey::SupportedAssets;
     let mut m: Map<Address, ()> = e
         .storage()
         .persistent()
-        .get(&DataKey::SupportedAssets)
+        .get(&key)
         .unwrap_or_else(|| Map::new(e));
 
     if m.contains_key(asset.clone()) {
@@ -216,8 +225,9 @@ pub fn write_add_asset(e: &Env, asset: Address) {
     }
 
     m.set(asset, ());
-    let key = DataKey::SupportedAssets;
+
     e.storage().persistent().set(&key, &m);
+    bump_persistent(e, &key);
 }
 
 /// Removes an asset from the supported assets set.

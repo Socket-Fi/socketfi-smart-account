@@ -126,6 +126,7 @@ pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
 /// - Returns `None` if no passkey is currently set.
 pub fn read_passkey(env: &Env) -> Option<BytesN<65>> {
     let key = DataKey::Passkey;
+    let passkey = env.storage().persistent().get(&key);
     bump_persistent(&env, &key);
-    env.storage().persistent().get(&key)
+    passkey
 }

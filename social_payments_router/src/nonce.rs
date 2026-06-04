@@ -16,6 +16,7 @@ use crate::data::DataKey;
 /// - Returning `0` as default is safe only if constructor initializes nonce
 ///   or first write happens before use.
 pub fn read_payment_nonce(e: &Env) -> u64 {
+    bump_instance(e);
     e.storage()
         .instance()
         .get(&DataKey::PaymentNonce)
