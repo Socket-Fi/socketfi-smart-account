@@ -43,8 +43,8 @@ pub fn read_max_deferred_fee(e: &Env) -> Result<i128, ContractError> {
 
 pub fn write_max_deferred_fee(e: &Env, fee: i128) {
     // ASSUMPTION: validated externally (fee > 0 and >= base_fee)
-    bump_instance(e);
     e.storage().instance().set(&DataKey::MaxDeferredFee, &fee);
+    bump_instance(e);
 }
 
 // ---------------------------------------------------------------------
