@@ -6,9 +6,13 @@ use soroban_sdk::{Address, Env, Map};
 
 pub fn read_voters(e: &Env) -> Map<Address, ()> {
     let key = DataKey::VotersList;
-    let voters = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
-    bump_persistent(e, &key);
-    voters
+
+    if let Some(voters) = e.storage().persistent().get(&key) {
+        bump_persistent(e, &key);
+        voters
+    } else {
+        Map::new(e)
+    }
 }
 
 pub fn write_voters(e: &Env, voters: &Map<Address, ()>) {
@@ -55,7 +59,13 @@ pub fn compute_approval_threshold(voter_count: u32) -> u32 {
 
 pub fn read_has_upgrade_passed(e: &Env) -> Result<(u32, bool), UpgradeError> {
     let key = DataKey::VotedList;
-    let voted: Map<Address, ()> = e.storage().persistent().get(&key).unwrap_or(Map::new(e));
+
+    let voted: Map<Address, ()> = if let Some(voted) = e.storage().persistent().get(&key) {
+        bump_persistent(e, &key);
+        voted
+    } else {
+        Map::new(e)
+    };
 
     let proposal_voters = read_proposal_voters(e)?;
     let required_threshold = read_proposal_approval_threshold(e)?;
@@ -67,7 +77,6 @@ pub fn read_has_upgrade_passed(e: &Env) -> Result<(u32, bool), UpgradeError> {
             valid_vote_count += 1;
         }
     }
-    bump_persistent(e, &key);
 
     Ok((valid_vote_count, valid_vote_count >= required_threshold))
 }

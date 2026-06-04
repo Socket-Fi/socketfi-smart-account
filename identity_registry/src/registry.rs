@@ -37,9 +37,13 @@ pub fn read_wallet_is_mapped(
     salt.append(&wallet.to_xdr(e));
 
     let key = DataKey::HasMap(e.crypto().sha256(&salt).into());
-    bump_persistent(e, &key);
 
-    Ok(e.storage().persistent().get(&key).unwrap_or(false))
+    if let Some(is_mapped) = e.storage().persistent().get::<_, bool>(&key) {
+        bump_persistent(e, &key);
+        Ok(is_mapped)
+    } else {
+        Ok(false)
+    }
 }
 
 pub fn write_wallet_is_mapped(

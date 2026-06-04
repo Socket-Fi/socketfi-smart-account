@@ -124,9 +124,10 @@ pub fn write_approve(env: &Env, asset: &Address, spender: &Address, amount: &i12
 /// NOTE:
 /// - This is a relative offset from the current ledger sequence at approval time.
 pub fn write_allowance_expiration(env: &Env, ledger_offset: u32) {
-    let key = DataKey::AllowanceExpiration;
-    env.storage().persistent().set(&key, &ledger_offset);
-    bump_persistent(env, &key);
+    bump_instance(env);
+    env.storage()
+        .instance()
+        .set(&DataKey::AllowanceExpiration, &ledger_offset);
 }
 
 /// Returns the configured allowance expiration offset.
@@ -134,10 +135,11 @@ pub fn write_allowance_expiration(env: &Env, ledger_offset: u32) {
 /// DEFAULT:
 /// - `17_000` ledgers if not explicitly configured.
 pub fn read_allowance_expiration(env: &Env) -> u32 {
-    let key = DataKey::AllowanceExpiration;
-    let expiration = env.storage().persistent().get(&key).unwrap_or(17_000);
-    bump_persistent(env, &key);
-    expiration
+    bump_instance(env);
+    env.storage()
+        .instance()
+        .get(&DataKey::AllowanceExpiration)
+        .unwrap_or(17_000u32)
 }
 
 // -----------------------------------------------------------------------------
@@ -176,14 +178,13 @@ pub fn write_limit(env: &Env, asset: Address, limit: i128) {
 /// - Uses `Map<Address, ()>` as a set representation.
 pub fn read_is_supported_asset(e: &Env, asset: Address) -> bool {
     let key = DataKey::SupportedAssets;
-    let is_supported = e
-        .storage()
-        .persistent()
-        .get::<_, Map<Address, ()>>(&key)
-        .map(|m| m.contains_key(asset))
-        .unwrap_or(false);
-    bump_persistent(e, &key);
-    is_supported
+
+    if let Some(map) = e.storage().persistent().get::<_, Map<Address, ()>>(&key) {
+        bump_persistent(e, &key);
+        map.contains_key(asset)
+    } else {
+        false
+    }
 }
 
 /// Returns all supported assets.
@@ -193,14 +194,13 @@ pub fn read_is_supported_asset(e: &Env, asset: Address) -> bool {
 /// - Ordering depends on map key ordering and should not be relied on.
 pub fn read_supported_assets(e: &Env) -> Vec<Address> {
     let key = DataKey::SupportedAssets;
-    let m = e
-        .storage()
-        .persistent()
-        .get::<_, Map<Address, ()>>(&key)
-        .unwrap_or_else(|| Map::new(e));
-    bump_persistent(e, &key);
 
-    m.keys()
+    if let Some(assets) = e.storage().persistent().get::<_, Map<Address, ()>>(&key) {
+        bump_persistent(e, &key);
+        assets.keys()
+    } else {
+        Vec::new(e)
+    }
 }
 
 /// Adds an asset to the supported assets set.

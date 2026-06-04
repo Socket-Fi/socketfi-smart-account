@@ -92,8 +92,12 @@ pub fn write_agg_bls_key(env: &Env, bls_agg: BytesN<96>) -> Result<(), WalletErr
 pub fn read_agg_bls_key(env: &Env) -> Option<BytesN<96>> {
     let key = DataKey::AggregatedBlsKey;
 
-    bump_persistent(&env, &key);
-    env.storage().persistent().get(&key)
+    if let Some(agg_bls_key) = env.storage().persistent().get(&key) {
+        bump_persistent(env, &key);
+        Some(agg_bls_key)
+    } else {
+        None
+    }
 }
 
 pub fn read_rpid_hash(env: &Env) -> Option<BytesN<32>> {
@@ -126,7 +130,11 @@ pub fn write_passkey(env: &Env, passkey: BytesN<65>) {
 /// - Returns `None` if no passkey is currently set.
 pub fn read_passkey(env: &Env) -> Option<BytesN<65>> {
     let key = DataKey::Passkey;
-    let passkey = env.storage().persistent().get(&key);
-    bump_persistent(&env, &key);
-    passkey
+
+    if let Some(passkey) = env.storage().persistent().get(&key) {
+        bump_persistent(env, &key);
+        Some(passkey)
+    } else {
+        None
+    }
 }

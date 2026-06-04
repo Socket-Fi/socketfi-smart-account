@@ -17,13 +17,13 @@ pub fn write_remove_registry_manager(e: &Env, manager: Address) {
 
 pub fn read_is_registry_manager(e: &Env, manager: Address) -> bool {
     let key = DataKey::RegistryManager(manager);
-    let is_manager = e
-        .storage()
-        .persistent()
-        .get::<_, bool>(&key)
-        .unwrap_or(false);
-    bump_persistent(e, &key);
-    is_manager
+
+    if let Some(is_manager) = e.storage().persistent().get::<_, bool>(&key) {
+        bump_persistent(e, &key);
+        is_manager
+    } else {
+        false
+    }
 }
 
 pub fn require_registry_manager(e: &Env, manager: Address) -> Result<(), RegistryError> {

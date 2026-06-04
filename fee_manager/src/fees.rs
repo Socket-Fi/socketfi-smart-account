@@ -62,9 +62,13 @@ pub fn write_max_deferred_fee(e: &Env, fee: i128) {
 
 pub fn read_deferred_fee(e: &Env, user: &Address) -> i128 {
     let key = DataKey::DeferredFee(user.clone());
-    let deferred = e.storage().persistent().get(&key).unwrap_or(0);
-    bump_persistent(e, &key);
-    deferred
+
+    if let Some(deferred) = e.storage().persistent().get::<_, i128>(&key) {
+        bump_persistent(e, &key);
+        deferred
+    } else {
+        0
+    }
 }
 
 pub fn write_deferred_fee(e: &Env, user: &Address, amount: i128) {
