@@ -1,8 +1,22 @@
 use socketfi_shared::ttl::{bump_instance, bump_persistent};
-use socketfi_webauthn::wallet_error::WalletError;
-use soroban_sdk::{crypto::bls12_381::G1Affine, Address, BytesN, Env, Vec};
+use socketfi_shared::wallet_error::WalletError;
 
-use crate::data::DataKey;
+use soroban_sdk::{contracttype, crypto::bls12_381::G1Affine, BytesN, Env, Vec};
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {
+    FactoryContract,
+    Owner,
+    Guardians,
+    Paused,
+    UnpauseApproved,
+    AggregatedBlsKey,
+    Passkey,
+    Nonce,
+    RpidHash,
+    RPID,
+}
 
 /// Check whether the wallet has already been initialized.
 ///
@@ -13,29 +27,6 @@ use crate::data::DataKey;
 pub fn is_initialized(env: &Env) -> bool {
     let key = DataKey::AggregatedBlsKey;
     env.storage().persistent().has(&key)
-}
-
-/// Read the external owner address from instance storage.
-///
-/// Notes:
-/// - Returns `Some(Address)` if an owner has been set.
-/// - Returns `None` if no owner is currently stored.
-/// - Uses instance storage because owner data is contract instance state.
-pub fn read_owner(env: &Env) -> Option<Address> {
-    let key = DataKey::Owner;
-    bump_instance(env);
-    env.storage().instance().get(&key)
-}
-
-/// Write or replace the external owner address in instance storage.
-///
-/// Notes:
-/// - Stores the provided owner address under `DataKey::Owner`.
-/// - Overwrites any previously stored owner value.
-pub fn write_owner(env: &Env, owner: &Address) {
-    let key = DataKey::Owner;
-    bump_instance(env);
-    env.storage().instance().set(&key, owner);
 }
 
 /// Aggregate multiple BLS public keys into a single aggregated key.

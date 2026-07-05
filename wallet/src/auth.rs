@@ -1,61 +1,13 @@
-use socketfi_webauthn::{
-    key_types::PasskeySignature, validate_passkey_assertion_data, wallet_error::WalletError,
-};
 use soroban_sdk::{
     crypto::bls12_381::{G1Affine, G2Affine},
-    vec,
-    xdr::ToXdr,
-    Bytes, BytesN, Env, String, Val, Vec,
+    vec, Bytes, BytesN, Env,
 };
 
-use crate::{
-    data::DataKey,
-    state::read_passkey,
-    state::{read_agg_bls_key, read_owner, read_rpid_hash},
-};
+use crate::states::{read_agg_bls_key, read_passkey, read_rpid_hash};
 use socketfi_shared::{
-    bls::g1_group_gen_point,
-    constants::{DST, MAX_AUTH_WINDOW_LEDGER},
-    ttl::bump_instance,
+    bls::g1_group_gen_point, constants::DST, key_types::PasskeySignature,
+    wallet_error::WalletError, webauthn_validation::validate_passkey_assertion_data,
 };
-
-pub fn read_nonce(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::Nonce).unwrap_or(0)
-}
-pub fn write_nonce(env: &Env, nonce: u64) {
-    env.storage().instance().set(&DataKey::Nonce, &nonce);
-}
-
-pub fn increment_nonce(env: &Env) -> u64 {
-    bump_instance(env);
-    let nonce = read_nonce(env);
-    let next = nonce.saturating_add(1);
-
-    write_nonce(env, next);
-
-    next
-}
-
-// Ensures externally signed wallet authorizations are short-lived.
-// The caller supplies `valid_until_ledger` as part of the signed payload,
-// but the contract bounds it to prevent long-lived replayable signatures.
-pub fn validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), WalletError> {
-    let current = env.ledger().sequence();
-
-    if valid_until_ledger <= current {
-        return Err(WalletError::InvalidLedgerWindow);
-    }
-
-    let max_allowed = current
-        .checked_add(MAX_AUTH_WINDOW_LEDGER)
-        .ok_or(WalletError::InvalidLedgerWindow)?;
-
-    if valid_until_ledger > max_allowed {
-        return Err(WalletError::WindowTooLarge);
-    }
-
-    Ok(())
-}
 
 /// Return the domain separation tag as contract bytes.
 ///
@@ -64,42 +16,6 @@ pub fn validate_auth_window(env: &Env, valid_until_ledger: u32) -> Result<(), Wa
 /// - Used during message hashing in signature verification.
 fn read_dst_bytes(e: &Env) -> Bytes {
     Bytes::from_slice(&e, DST.as_bytes())
-}
-
-/// Compute the wallet authorization payload hash.
-///
-/// Notes:
-/// - Builds the payload from:
-///   - current wallet nonce
-///   - current contract address
-///   - function name
-///   - encoded argument list
-/// - Returns the SHA-256 hash of the serialized payload.
-/// - Used as the message payload for owner/BLS authorization flows.
-pub fn compute_tx_nonce(
-    env: &Env,
-    func: String,
-    args: Vec<Val>,
-    valid_until_ledger: u32,
-) -> Result<BytesN<32>, WalletError> {
-    validate_auth_window(env, valid_until_ledger)?;
-    let nonce = read_nonce(env);
-
-    let mut payload = Bytes::new(env);
-
-    payload.append(&Bytes::from_slice(env, b"SOCKETFI_WALLET_AUTH_V1"));
-    payload.append(&env.current_contract_address().to_xdr(env));
-
-    payload.append(&nonce.to_xdr(env));
-    payload.append(&valid_until_ledger.to_xdr(env));
-
-    payload.append(&func.to_xdr(env));
-
-    for arg in args.iter() {
-        payload.append(&arg.to_xdr(env));
-    }
-
-    Ok(env.crypto().sha256(&payload).into())
 }
 
 /// Verifies a WebAuthn passkey assertion against the wallet's registered passkey.
@@ -182,30 +98,6 @@ pub fn verify_bls_key(
     // Signature is valid only if the pairing equation holds.
     if !bls.pairing_check(vp1, vp2) {
         return Err(WalletError::InvalidSignature);
-    }
-
-    Ok(())
-}
-
-/// Require owner authorization using either BLS signature auth or direct owner auth.
-///
-/// Notes:
-/// - If a signature is provided, authorization is performed through BLS verification.
-/// - If no signature is provided, the stored owner address must authorize directly.
-/// - Current implementation assumes an owner is configured in the direct auth path
-///   and uses `unwrap()`, so missing owner state would panic.
-pub fn owner_require_auth(
-    env: Env,
-    challenge: BytesN<32>,
-    passkey_sig: Option<PasskeySignature>,
-) -> Result<(), WalletError> {
-    if let Some(signature) = passkey_sig {
-        // Signature-based authorization path using aggregated BLS verification.
-        verify_passkey(&env, challenge, signature)?;
-    } else {
-        // Direct owner authorization path using the stored external owner address.
-        let owner = read_owner(&env).unwrap();
-        owner.require_auth();
     }
 
     Ok(())

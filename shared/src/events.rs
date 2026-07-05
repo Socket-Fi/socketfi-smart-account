@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, Address, BytesN, String, Vec};
+use soroban_sdk::{contractevent, Address, BytesN, Vec};
 
 #[contractevent(topics = ["Upgrade", "ProposalCreated"])]
 pub struct UpgradeProposalEvent {
@@ -44,51 +44,14 @@ pub struct AddVoterEvent {
 pub struct RemoveVoterEvent {
     pub value: Address,
 }
-#[contractevent(topics = ["Update", "Registry"])]
-pub struct UpdateRegistryEvent {
-    pub value: Address,
-}
-#[contractevent(topics = ["Update", "SocialRouter"])]
-pub struct UpdateSocialRouterEvent {
-    pub value: Address,
-}
-#[contractevent(topics = ["Update", "FeeManager"])]
-pub struct UpdateFeeManagerEvent {
-    pub value: Address,
-}
-#[contractevent(topics = ["Withdraw", "Fee"])]
-pub struct WithdrawFeeEvent {
-    pub asset: Address,
-    pub amount: i128,
-    pub to: Address,
-}
 
-#[contractevent(topics = ["Sync", "ProtocolDependencies"])]
-pub struct SyncProtocolDependenciesEvent {
+#[contractevent(topics = ["Wallet", "PasskeyRotation"])]
+pub struct PasskeyRotationEvent {
     pub wallet: Address,
-
-    pub old_registry: Address,
-    pub old_fee_manager: Address,
-    pub old_social_router: Address,
-
-    pub new_registry: Address,
-    pub new_fee_manager: Address,
-    pub new_social_router: Address,
+    pub new_passkey: BytesN<65>,
 }
-#[contractevent(topics = ["Registry", "PasskeyMap"])]
-pub struct PasskeyMapEvent {
+#[contractevent(topics = ["Wallet", "PasskeyRecovery"])]
+pub struct WalletRecoveryEvent {
     pub wallet: Address,
-    pub passkey: BytesN<65>,
-}
-#[contractevent(topics = ["Registry", "IdentityMapAdded"])]
-pub struct AddIdentityMapEvent {
-    pub wallet: Address,
-    pub id: String,
-    pub platform: String,
-}
-#[contractevent(topics = ["Registry", "IdentityMapRemoved"])]
-pub struct RemoveIdentityMapEvent {
-    pub wallet: Address,
-    pub id: String,
-    pub platform: String,
+    pub new_passkey: BytesN<65>,
 }

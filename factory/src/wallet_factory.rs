@@ -1,15 +1,10 @@
 #![allow(unused)]
 use crate::data::DataKey;
-use socketfi_access::access::{read_fee_manager, read_registry, read_social_router};
 use socketfi_shared::{
     bls::{g1_group_gen_point, is_g1_infinity},
     constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
-    ttl::bump_instance,
-};
-
-use socketfi_webauthn::{
     key_types::{BlsKeyWithPoP, PasskeySignature},
-    validate_passkey_assertion_data,
+    ttl::bump_instance,
     wallet_error::WalletError,
 };
 
@@ -95,7 +90,7 @@ pub fn write_create_wallet(
     passkey_sig: PasskeySignature,
     bls_keys_pop: Vec<BlsKeyWithPoP>,
     challenge: BytesN<32>,
-    external_wallet: Option<Address>,
+    guardians: Vec<Address>,
 ) -> Result<Address, WalletError> {
     // Load the approved wallet wasm version for deployment.
     let wasm = read_wallet_wasm_hash(&e).unwrap();
@@ -116,11 +111,7 @@ pub fn write_create_wallet(
                 passkey_sig,
                 rpid_hash,
                 bls_keys_pop,
-                read_registry(e).unwrap(),
-                read_social_router(e).unwrap(),
-                read_fee_manager(e).unwrap(),
-                e.current_contract_address(),
-                external_wallet,
+                guardians,
             ),
         );
 

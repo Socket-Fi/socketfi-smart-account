@@ -1,9 +1,9 @@
-use socketfi_shared::{fee_types::FeePreference, registry_types::ValidatorSignature};
-use socketfi_webauthn::{
+use soroban_sdk::{Address, BytesN, Env, Vec};
+
+use socketfi_shared::{
     key_types::{BlsKeyWithPoP, PasskeySignature},
     wallet_error::WalletError,
 };
-use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Val, Vec};
 
 pub trait WalletTrait {
     // initialization
@@ -14,35 +14,14 @@ pub trait WalletTrait {
         passkey_sig: PasskeySignature,
         rpid_hash: BytesN<32>,
         bls_keys_pop: Vec<BlsKeyWithPoP>,
-        registry: Address,
-        social_router: Address,
-        fee_manager: Address,
-        factory: Address,
-        external_wallet: Option<Address>,
+        guardians: Vec<Address>,
     ) -> Result<(), WalletError>;
 
-    // owner/account settings
-    fn set_external_wallet(
-        env: Env,
-        external_wallet: Address,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    fn set_asset_limit(
-        env: Env,
-        asset: Address,
-        limit: i128,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
+    // Account management
     fn rotate_passkey(
         env: Env,
         new_passkey: BytesN<65>,
         new_passkey_pop_sig: PasskeySignature,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
     fn recover_account(
@@ -50,96 +29,19 @@ pub trait WalletTrait {
         new_passkey: BytesN<65>,
         new_passkey_pop_sig: PasskeySignature,
         agg_bls_sig: BytesN<192>,
-        valid_until_ledger: u32,
     ) -> Result<(), WalletError>;
 
-    fn add_id_wallet_map(
-        env: Env,
-        user_id: String,
-        platform_str: String,
-        signatures: Vec<ValidatorSignature>,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
+    // Emergency controls
+    fn pause(env: Env, guardian: Address) -> Result<(), WalletError>;
+    fn approve_unpause(env: Env, guardian: Address) -> Result<(), WalletError>;
+    fn unpause(env: Env) -> Result<(), WalletError>;
 
-    fn remove_id_wallet_map(
-        env: Env,
-        user_id: String,
-        platform_str: String,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    // asset actions
-    fn deposit(env: Env, from: Address, asset: Address, amount: i128) -> Result<(), WalletError>;
-
-    fn withdraw(
-        env: Env,
-        to: Address,
-        asset: Address,
-        amount: i128,
-        fee_pref: Option<FeePreference>,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    fn approve(
-        env: Env,
-        asset: Address,
-        spender: Address,
-        amount: i128,
-        fee_pref: Option<FeePreference>,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    fn spend(
-        env: Env,
-        asset: Address,
-        spender: Address,
-        amount: i128,
-        to: Address,
-    ) -> Result<(), WalletError>;
-
-    // contract interaction
-    fn dapp_invoker(
-        env: Env,
-        contract_id: Address,
-        func: Symbol,
-        args: Option<Vec<Val>>,
-        auth_vec: Option<Vec<Map<String, Val>>>,
-        fee_pref: Option<FeePreference>,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<Val, WalletError>;
+    // Guardian management
+    fn add_guardian(env: Env, guardian: Address) -> Result<(), WalletError>;
+    fn schedule_guardian_removal(env: Env, guardian: Address) -> Result<(), WalletError>;
+    fn finalize_guardian_removal(env: Env, guardian: Address) -> Result<(), WalletError>;
 
     // views
+    fn is_paused(env: Env) -> bool;
     fn get_passkey(env: Env) -> Option<BytesN<65>>;
-    fn get_allowance(env: Env, asset: Address, spender: Address) -> i128;
-    fn get_limit(env: Env, asset: Address) -> Option<i128>;
-
-    fn get_tx_payload(
-        env: Env,
-        func: String,
-        args: Vec<Val>,
-        valid_until_ledger: u32,
-    ) -> Result<BytesN<32>, WalletError>;
-    fn get_balance(env: Env, asset: Address) -> i128;
-    fn get_owner(env: Env) -> Option<Address>;
-    fn get_registry(env: Env) -> Option<Address>;
-    fn get_fee_manager(env: Env) -> Option<Address>;
-    fn get_social_router(env: Env) -> Option<Address>;
-    fn get_factory(env: Env) -> Option<Address>;
-    fn sync_protocol_dependencies(
-        env: Env,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
-
-    // upgrade
-    fn upgrade(
-        env: Env,
-        passkey_sig: Option<PasskeySignature>,
-        valid_until_ledger: u32,
-    ) -> Result<(), WalletError>;
 }

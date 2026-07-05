@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, Vec};
 
 #[derive(Clone)]
 #[contracttype]
@@ -13,6 +13,13 @@ pub struct PasskeySignature {
     pub signature: BytesN<64>,
     pub client_data_json: Bytes,
     pub authenticator_data: Bytes,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct GuardianInfo {
+    pub address: Address,
+    pub removal_time: Option<u32>,
 }
 
 pub fn extract_bls_keys(e: &Env, bls_keys_pop: Vec<BlsKeyWithPoP>) -> Vec<BytesN<96>> {

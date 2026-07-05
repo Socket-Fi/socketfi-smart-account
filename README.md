@@ -1,147 +1,207 @@
 # SocketFi
 
-**SocketFi** is a modular smart wallet ecosystem built on Soroban (Stellar), enabling seamless Web3 interactions through social identity, passkeys, and flexible fee abstraction.
+**SocketFi** is a modular smart account infrastructure built on Soroban (Stellar), enabling embedded self-custody through passkeys, social authentication, account abstraction, and programmable transaction execution.
 
 ---
 
-## Overview
+# Overview
 
-SocketFi provides a full-stack smart contract system for:
+SocketFi provides a production-ready smart contract system for:
 
-- Smart wallet deployment and execution
-- Social identity-based payments
-- Flexible fee handling (including deferred fees)
-- Governance-driven upgrades
-- Shared utilities for consistent contract design
+- Smart account deployment
+- Passkey-based authentication
+- Programmable transaction execution
+- Upgradeable protocol architecture
+- Shared libraries for reusable logic
 
-The architecture is designed to be modular, composable, and production-ready.
-
----
-
-## Architecture
-
-The protocol consists of the following core packages:
-
-### Core Contracts
-
-- **Factory** → Deploys wallets and manages system configuration
-- **Wallet** → Smart wallet for asset management and execution
-- **Identity Registry** → Maps social identities to wallet addresses
-- **Social Payment Router** → Enables payments via user identifiers
-- **Fee Manager** → Handles fee calculation and settlement
+The protocol is designed around a modular architecture where each contract has a well-defined responsibility while remaining composable with the rest of the system.
 
 ---
 
-### Shared Packages
+# Architecture
 
-- **Shared** → Common types, utilities, and token helpers
-- **Access** → Admin and dependency access control helpers
-- **Upgrade** → Manages governance-driven upgrades
+The current workspace consists of the following packages.
 
----
+## Core Contracts
 
-## Contract Relationships
+### Factory
 
-Factory → deploys → Wallet
+Responsible for:
 
-Wallet → uses → Fee Manager  
-Wallet → uses → Identity Registry
+- Deploying new smart accounts
+- Initializing wallet configuration
+- Managing protocol-wide deployment logic
 
-Router → resolves → Identity Registry  
-Router → routes → Wallet
+### Wallet
 
-Factory → integrates → Upgrade  
-All contracts → use → Shared + Access
+The primary smart account implementation providing:
 
----
-
-## Key Features
-
-- **Smart Wallets**
-
-  - Passkey-based authentication
-  - Optional BLS multi-signature support
-
-- **Social Payments**
-
-  - Send assets using `(platform, user_id)`
-  - Automatic wallet resolution via registry
-
-- **Fee Abstraction**
-
-  - Pay fees in supported assets
-  - Support for deferred fee settlement
-
-- **Governance**
-
-  - Proposal-based upgrades
-  - Multi-voter approval system
-
-- **Modular Design**
-  - Contracts are loosely coupled
-  - Reusable shared logic across modules
+- Passkey authentication
+- Transaction execution
+- Multi-operation support
+- Asset management
+- Authorization validation
+- Extensible account abstraction
 
 ---
 
-## Workspace Structure
+## Shared Libraries
 
+### Shared
+
+Common protocol functionality including:
+
+- Shared types
+- Utility functions
+- Authentication helpers
+- Token helpers
+- Serialization helpers
+- Common interfaces
+
+### Upgrade
+
+Provides reusable governance upgrade utilities including:
+
+- Upgrade authorization
+- Contract migration helpers
+- Version management
+- Safe upgrade patterns
+
+---
+
+# Contract Relationships
+
+```
+Factory
+    │
+    └──── deploys ─────► Wallet
+                              │
+                              │ uses
+                              ▼
+                           Shared
+
+Factory ───────────────► Upgrade
+
+Wallet ────────────────► Upgrade
+Wallet ────────────────► Shared
+Factory ───────────────► Shared
+```
+
+---
+
+# Key Features
+
+## Smart Accounts
+
+- Passkey-native authentication
+- Self-custodial architecture
+- Secure transaction execution
+- Flexible authorization model
+- Soroban-native account abstraction
+
+## Wallet Deployment
+
+- Permissionless wallet creation
+- Deterministic deployment
+- Factory-managed initialization
+
+## Authentication
+
+- Passkey support
+- Signature verification
+- Extensible authentication framework
+
+## Upgradeability
+
+- Governance-compatible upgrade utilities
+- Safe migration support
+- Versioned contracts
+
+## Shared Infrastructure
+
+- Reusable utilities
+- Shared protocol types
+- Consistent interfaces
+- Reduced code duplication
+
+---
+
+# Workspace Structure
+
+```
 /factory
 /wallet
-/identity_registry
-/social_router
-/fee_manager
-/upgrade
 /shared
-/access
+/upgrade
+```
 
 ---
 
-## Development
+# Development
 
-### Requirements
+## Requirements
 
 - Rust (stable)
 - Soroban SDK
+- Cargo
 
-### Build
+## Build
 
+```bash
 cargo build --release
+```
 
-### Test
+## Test
 
+```bash
 cargo test
+```
 
 ---
 
-## Design Principles
+# Design Principles
 
-- **Modularity** → Each contract has a single responsibility
-- **Security-first** → Strict auth and validation patterns
-- **Determinism** → Predictable behavior across contracts
-- **Composability** → Contracts interact cleanly via interfaces
-
----
-
-## Integration Flow (Example)
-
-1. User creates wallet via Factory
-2. Identity is linked in Registry
-3. Payment is initiated via Router
-4. Router resolves recipient wallet
-5. Wallet executes transfer
-6. Fee Manager applies fee logic
+- **Modularity** — Each package has a single responsibility.
+- **Security First** — Authentication and validation are enforced throughout the protocol.
+- **Composability** — Components are designed to work together while remaining independently reusable.
+- **Determinism** — Smart account behavior is predictable and reproducible.
+- **Maintainability** — Shared libraries reduce duplication and simplify future development.
 
 ---
 
-## Notes
+# Typical Flow
 
-- Wallet deployment is permissionless
-- Identity resolution depends on registry state
-- Fee logic supports both immediate and deferred models
-- Upgrade system controls contract evolution
+1. A user requests a new smart account.
+2. The Factory deploys and initializes a Wallet.
+3. The Wallet authenticates the user using a passkey.
+4. The Wallet validates authorization.
+5. The requested transaction is executed.
+6. Future protocol upgrades are managed through the Upgrade library.
 
 ---
 
-## License
+# Repository Structure
+
+```
+socketfi/
+├── factory/
+├── wallet/
+├── shared/
+├── upgrade/
+└── README.md
+```
+
+---
+
+# Notes
+
+- Wallet deployment is permissionless.
+- Authentication is built around passkeys.
+- Contracts share reusable logic through the Shared package.
+- Upgrade functionality is isolated to simplify governance and maintenance.
+
+---
+
+# License
 
 MIT

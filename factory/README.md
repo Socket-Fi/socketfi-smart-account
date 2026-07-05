@@ -1,148 +1,162 @@
 # Factory Contract
 
-The **Factory Contract** is the deployment and governance entry point for wallet creation in the SocketFi ecosystem.
+The **Factory Contract** is the deployment and governance entry point for SocketFi wallets.
 
-It manages wallet deployment, system dependencies, and upgrade coordination.
+It is responsible for deploying new wallet instances, managing the approved wallet implementation, and coordinating wallet upgrade governance.
 
 ---
 
-## Overview
+# Overview
 
 The Factory contract is responsible for:
 
 - Deploying new wallet instances
-- Storing shared protocol dependencies
-- Managing the active wallet WASM version
-- Coordinating upgrade governance
+- Managing the approved wallet WASM version
+- Generating wallet creation proof challenges
+- Coordinating wallet upgrade governance
+- Managing governance voters
 
 ---
 
-## Features
+# Features
 
-### Wallet Deployment
+## Wallet Deployment
 
 - Permissionless wallet creation
-- Initializes wallets with passkey and optional BLS keys
-- Uses the currently approved wallet WASM
+- Passkey proof verification
+- Guardian BLS proof verification
+- Deterministic wallet creation challenges
+- Deploys the currently approved wallet implementation
 
-### System Configuration
+## Factory Configuration
 
-Stores core dependencies:
+Stores protocol configuration including:
 
-- Admin
-- Registry contract
-- Fee manager contract
-- (Optional) Social router
+- Factory administrator
+- RP ID hash
+- Approved wallet WASM hash
 
-### Upgrade Governance
+## Upgrade Governance
 
 - Proposal-based wallet upgrades
-- Approved voter participation
+- Governance voting
 - Controlled upgrade execution
+- Voter management
 
 ---
 
-## Initialization
+# Initialization
 
-### `__constructor`
+## `__constructor`
 
-Initializes the contract.
+Initializes the factory.
 
-**Parameters:**
+### Parameters
 
 - `admin: Address`
-- `registry: Address`
-- `fee_manager: Address`
+- `rpid: String`
 - `wasm: BytesN<32>`
 
-(Optional if implemented)
+Initialization:
 
-- `social_router: Address`
-
-**Notes:**
-
-- Can only be called once
-- Sets initial wallet version and dependencies
+- Stores the factory administrator
+- Stores the RP ID hash
+- Stores the initial approved wallet WASM hash
+- Registers the initial governance voter
 
 ---
 
-## Core Functions
+# Core Functions
 
-### `create_wallet`
+## `create_wallet`
 
-Deploys a new wallet instance.
+Deploys and initializes a new wallet.
 
-**Params:**
+### Parameters
 
-- `passkey: BytesN<77>`
-- `bls_keys: Vec<BytesN<96>>`
+- `passkey: BytesN<65>`
+- `passkey_sig: PasskeySignature`
+- `bls_keys_pop: Vec<BlsKeyWithPoP>`
+- `nonce: BytesN<32>`
+- `network: Symbol`
+- `guardians: Vec<Address>`
 
-**Returns:**
+### Returns
 
 - `Address`
 
+Before deployment the factory:
+
+- Verifies the wallet creation challenge
+- Verifies passkey proof of possession
+- Verifies guardian BLS proofs of possession
+- Prevents nonce reuse
+
 ---
 
-### Read Methods
+# Read Methods
 
 - `get_wallet_wasm_hash`
+- `get_pop_challenge`
 - `get_admin`
-- `get_registry`
-- `get_fee_manager`
-- `get_social_router` (if supported)
 
 ---
 
-### Admin Functions
+# Administrative Functions
 
-Require admin authorization:
+Require factory administrator authorization.
 
 - `update_admin`
-- `update_registry`
-- `update_fee_manager`
-- `update_social_router` (if supported)
 
 ---
 
-### Governance
+# Governance
 
 - `propose_upgrade`
-- `add_voter`
-- `remove_voter`
 - `cast_vote`
 - `apply_upgrade`
 - `cancel_proposal`
+- `add_voter`
+- `remove_voter`
 
 ---
 
-## Security
+# Security
 
-- Admin-gated configuration updates
-- Voter-controlled upgrade approval
 - One-time initialization
-- Wallet deployment is permissionless
+- Permissionless wallet deployment
+- Replay protection through creation nonces
+- Passkey proof verification
+- Guardian BLS proof verification
+- Admin-controlled configuration
+- Governance-controlled wallet upgrades
 
 ---
 
-## Integration
+# Integration
 
-Used by:
-
-- Wallet contracts
-- Identity registry
-- Fee manager
-- Upgrade module
-
----
-
-## Notes
-
-- Wallet version is controlled via governance
-- Prevent duplicate voters in storage
-- Prefer enum over string for proposal types
+```
+User
+   │
+   ▼
+Factory
+   │
+   ├── verifies wallet creation proofs
+   ├── deploys Wallet
+   └── manages wallet upgrade governance
+```
 
 ---
 
-## License
+# Notes
+
+- Wallet deployment is permissionless.
+- Wallets are always deployed using the currently approved wallet WASM.
+- Wallet creation challenges are deterministic and prevent replay through nonce tracking.
+- Wallet version upgrades are controlled through governance.
+
+---
+
+# License
 
 MIT

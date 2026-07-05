@@ -1,52 +1,60 @@
 # Protocol Metrics
 
-## Lines of Code (Rust)
+## access
 
-Breakdown of the SocketFi workspace by package.
+github.com/AlDanial/cloc v 2.08  T=0.02 s (121.1 files/s, 7691.3 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                             2              9             80             38
+-------------------------------------------------------------------------------
+SUM:                             2              9             80             38
+-------------------------------------------------------------------------------
 
-| Package                | Files | Blank | Comments | Code |
-| ---------------------- | ----: | ----: | -------: | ---: |
-| access                 |     2 |    18 |      139 |   63 |
-| factory                |     4 |    56 |      176 |  187 |
-| fee_manager            |     6 |    70 |      127 |  279 |
-| identity_registry      |     6 |    85 |      219 |  300 |
-| shared                 |    12 |    92 |      415 |  451 |
-| social_payments_router |     6 |   116 |      272 |  474 |
-| upgrade                |     5 |    81 |      376 |  297 |
-| wallet                 |     9 |   133 |      352 |  575 |
+## docs
 
----
 
-## Summary
+## factory
 
-- **Total Rust Files:** 50
-- **Total Code Lines:** 2,626
-- **Total Comments:** 2,076
-- **Total Blank Lines:** 651
+github.com/AlDanial/cloc v 2.08  T=0.02 s (264.8 files/s, 19169.7 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                             5             52             39            271
+-------------------------------------------------------------------------------
+SUM:                             5             52             39            271
+-------------------------------------------------------------------------------
 
----
+## shared
 
-## Insights
+github.com/AlDanial/cloc v 2.08  T=0.02 s (536.3 files/s, 36198.9 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                            10             94            188            393
+-------------------------------------------------------------------------------
+SUM:                            10             94            188            393
+-------------------------------------------------------------------------------
 
-- The **Wallet contract** is the largest component (575 LOC)
-- The **Router** and **Shared modules** contain significant logic complexity
-- High comment count indicates strong documentation coverage
-- Modular structure keeps contracts well-separated and maintainable
+## upgrade
 
----
+github.com/AlDanial/cloc v 2.08  T=0.02 s (310.8 files/s, 33876.2 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                             5             89            107            349
+-------------------------------------------------------------------------------
+SUM:                             5             89            107            349
+-------------------------------------------------------------------------------
 
-## Notes
+## wallet
 
-- Metrics generated using `cloc`
-- Excludes `target` and `.git` directories
-- Rust-only analysis
+github.com/AlDanial/cloc v 2.08  T=0.02 s (327.5 files/s, 45292.7 lines/s)
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                             7            170            151            647
+-------------------------------------------------------------------------------
+SUM:                             7            170            151            647
+-------------------------------------------------------------------------------
 
----
-
-## Command Used
-
-```bash
-for dir in */; do
-  cloc "$dir" --include-lang=Rust --exclude-dir=target,.git
-done
-```

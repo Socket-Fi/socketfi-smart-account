@@ -1,18 +1,18 @@
 #![allow(unused)]
-use crate::{data::DataKey, state::aggregate_bls_keys};
-use socketfi_access::access::{read_fee_manager, read_registry, read_social_router};
+use crate::{
+    guardians::is_paused,
+    states::{aggregate_bls_keys, DataKey},
+};
 use socketfi_shared::{
     bls::{g1_group_gen_point, is_g1_infinity},
     constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
-};
-
-use socketfi_webauthn::{
     key_types::{extract_bls_keys, BlsKeyWithPoP, PasskeySignature},
-    validate_passkey_assertion_data,
     wallet_error::WalletError,
+    webauthn_validation::validate_passkey_assertion_data,
 };
 
 use soroban_sdk::{
+    auth::Context,
     crypto::bls12_381::{G1Affine, G2Affine},
     vec,
     xdr::ToXdr,
@@ -164,6 +164,47 @@ pub fn verify_passkey_pop(
     let digest = env.crypto().sha256(&signed_payload);
     env.crypto()
         .secp256r1_verify(&passkey, &digest, &passkey_sig.signature);
+
+    Ok(())
+}
+
+pub fn build_passkey_action_challenge(
+    env: &Env,
+    domain: &[u8],
+    new_passkey: BytesN<65>,
+) -> BytesN<32> {
+    let mut payload = Bytes::from_slice(env, domain);
+
+    // Binds the proof to this exact wallet contract.
+    payload.append(&env.current_contract_address().to_xdr(env));
+
+    // Binds the proof to the exact new passkey being installed.
+    payload.append(&Bytes::from(new_passkey.to_xdr(env)));
+
+    env.crypto().sha256(&payload).into()
+}
+
+pub fn validate_auth_contexts(env: &Env, auth_contexts: Vec<Context>) -> Result<(), WalletError> {
+    if !is_paused(env) {
+        return Ok(());
+    }
+
+    let wallet = env.current_contract_address();
+
+    for ctx in auth_contexts.iter() {
+        match ctx {
+            Context::Contract(contract_ctx) => {
+                if contract_ctx.contract != wallet {
+                    return Err(WalletError::WalletPaused);
+                }
+
+                if contract_ctx.fn_name != Symbol::new(env, "unpause") {
+                    return Err(WalletError::WalletPaused);
+                }
+            }
+            _ => return Err(WalletError::WalletPaused),
+        }
+    }
 
     Ok(())
 }
