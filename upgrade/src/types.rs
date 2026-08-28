@@ -4,7 +4,7 @@ use soroban_sdk::{contracttype, String};
 ///
 /// VARIANTS:
 /// - Upgrade → contract WASM upgrade
-/// - WalletVersion → update approved wallet implementation hash
+/// - AccountVersion → update approved account implementation hash
 ///
 /// DESIGN NOTE:
 /// - This enum is persisted in storage via `ProposalType`.
@@ -18,7 +18,7 @@ use soroban_sdk::{contracttype, String};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpgradeType {
     Upgrade,
-    WalletVersion,
+    AccountVersion,
 }
 
 impl UpgradeType {
@@ -27,7 +27,7 @@ impl UpgradeType {
     /// INPUT:
     /// - Expected values:
     ///     - "upgrade"
-    ///     - "wallet"
+    ///     - "account"
     ///
     /// RETURNS:
     /// - Some(UpgradeType) → valid type
@@ -35,7 +35,7 @@ impl UpgradeType {
     ///
     /// IMPORTANT:
     /// - Matching is STRICT and case-sensitive.
-    /// - Any mismatch (e.g. "Upgrade", "WALLET") will fail.
+    /// - Any mismatch (e.g. "Upgrade", "ACCOUNT") will fail.
     ///
     /// SECURITY:
     /// - Prevents invalid proposal types from entering storage.
@@ -51,8 +51,8 @@ impl UpgradeType {
 
         if s == String::from_str(&e, "upgrade") {
             Some(Self::Upgrade)
-        } else if s == String::from_str(&e, "wallet") {
-            Some(Self::WalletVersion)
+        } else if s == String::from_str(&e, "account") {
+            Some(Self::AccountVersion)
         } else {
             None
         }

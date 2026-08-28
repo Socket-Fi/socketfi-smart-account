@@ -10,7 +10,7 @@ pub enum DataKey {
     FutureWASM,
     VotersList,
     VotedList,
-    WalletVersion,
+    AccountVersion,
     ProposalType,
 
     // Snapshot state
@@ -62,16 +62,16 @@ pub fn write_future_wasm(
     Ok(())
 }
 
-pub fn write_wallet_wasm_version(e: &Env, wasm_hash: &BytesN<32>) {
+pub fn write_account_wasm_version(e: &Env, wasm_hash: &BytesN<32>) {
     bump_instance(e);
     e.storage()
         .instance()
-        .set(&DataKey::WalletVersion, wasm_hash);
+        .set(&DataKey::AccountVersion, wasm_hash);
 }
 
-pub fn read_wallet_wasm_version(e: &Env) -> Option<BytesN<32>> {
+pub fn read_account_wasm_version(e: &Env) -> Option<BytesN<32>> {
     bump_instance(e);
-    e.storage().instance().get(&DataKey::WalletVersion)
+    e.storage().instance().get(&DataKey::AccountVersion)
 }
 
 // -----------------------------------------------------------------------------

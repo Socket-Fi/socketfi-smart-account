@@ -1,5 +1,7 @@
 use soroban_sdk::{contractevent, Address, BytesN, Vec};
 
+use crate::key_types::AccountCommitment;
+
 #[contractevent(topics = ["Upgrade", "ProposalCreated"])]
 pub struct UpgradeProposalEvent {
     pub wasm: BytesN<32>,
@@ -11,8 +13,8 @@ pub struct ContractUpgradeEvent {
     pub wasm: BytesN<32>,
 }
 
-#[contractevent(topics = ["Upgrade", "WalletVersion"])]
-pub struct WalletVersionUpgradeEvent {
+#[contractevent(topics = ["Upgrade", "AccountVersion"])]
+pub struct AccountVersionUpgradeEvent {
     pub wasm: BytesN<32>,
 }
 
@@ -26,10 +28,12 @@ pub struct VoteEvent {
 pub struct UpgradeCancelledEvent {
     pub wasm: BytesN<32>,
 }
-#[contractevent(topics = ["Wallet", "Creation"])]
-pub struct WalletCreationEvent {
-    pub wallet: Address,
-    pub passkey: BytesN<65>,
+#[contractevent(topics = ["Account", "Creation"])]
+pub struct AccountCreationEvent {
+    pub account: Address,
+    pub passkey: Option<BytesN<65>>,
+    pub stellar_signer: Option<BytesN<32>>,
+    pub evm_signer: Option<BytesN<20>>,
     pub bls_keys: Vec<BytesN<96>>,
 }
 #[contractevent(topics = ["Update", "Admin"])]
@@ -45,13 +49,15 @@ pub struct RemoveVoterEvent {
     pub value: Address,
 }
 
-#[contractevent(topics = ["Wallet", "PasskeyRotation"])]
-pub struct PasskeyRotationEvent {
-    pub wallet: Address,
-    pub new_passkey: BytesN<65>,
+#[contractevent(topics = ["Account", "Rotation"])]
+pub struct AccountRotationEvent {
+    pub commitment: AccountCommitment,
+    pub live_until_ledger: u32,
+    pub new_session_epoch: u64,
 }
-#[contractevent(topics = ["Wallet", "PasskeyRecovery"])]
-pub struct WalletRecoveryEvent {
-    pub wallet: Address,
-    pub new_passkey: BytesN<65>,
+#[contractevent(topics = ["Account", "Recovery"])]
+pub struct AccountRecoveryEvent {
+    pub commitment: AccountCommitment,
+    pub live_until_ledger: u32,
+    pub new_session_epoch: u64,
 }

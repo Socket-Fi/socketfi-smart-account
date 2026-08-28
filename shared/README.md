@@ -15,7 +15,7 @@ The shared package provides:
 - Utility functions
 - Reusable helpers for storage, keys, and tokens
 
-It is imported by all core contracts (Factory, Wallet, Registry, Router, Fee Manager, Upgrade).
+It is imported by all core contracts (Factory, Account, Registry, Router, Fee Manager, Upgrade).
 
 ---
 

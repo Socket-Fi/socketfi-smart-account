@@ -3,19 +3,20 @@ use soroban_sdk::contracterror;
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum WalletError {
+pub enum AccountError {
     // ============================================================
     // Generic
     // ============================================================
     InvalidSignature = 100,
+    InvalidConfig = 121,
 
     // ============================================================
-    // Wallet lifecycle
+    // Account lifecycle
     // ============================================================
     AlreadyInitialized = 200,
     PasskeyNotFound = 201,
     RpidNotFound = 202,
-    WalletVersionNotFound = 203,
+    AccountVersionNotFound = 203,
 
     // ============================================================
     // BLS validation
@@ -40,10 +41,32 @@ pub enum WalletError {
     UserVerificationRequired = 406,
 
     // ============================================================
+    // Stellar / Signer
+    // ============================================================
+    StellarSignerMismatch = 420,
+    InvalidStellarSigner = 421,
+
+    // ============================================================
+    // Stellar / Classic Account
+    // ============================================================
+    StellarSignerNotFound = 456,
+
+    // ============================================================
+    // EVM / Ethereum Account
+    // ============================================================
+    InvalidEvmRecoveryId = 471,
+    EvmSignerNotFound = 473,
+
+    // ============================================================
     // Network / Replay
     // ============================================================
     InvalidNetwork = 500,
     NonceAlreadyUsed = 501,
+
+    // ============================================================
+    // migration
+    // ============================================================
+    MigrationNotRequired = 550,
 
     // ============================================================
     // Guardian
@@ -64,6 +87,15 @@ pub enum WalletError {
     // ============================================================
     // Pause
     // ============================================================
-    WalletPaused = 800,
+    AccountPaused = 800,
     UnpauseNotApproved = 801,
+
+    InvalidSessionPolicy = 811,
+    SessionRevoked = 812,
+    SessionAlreadyExists = 813,
+    SessionNotFound = 814,
+    SessionUnavailable = 815,
+    SessionUnauthorized = 816,
+    SessionLimitExceeded = 817,
+    ArithmeticOverflow = 818,
 }

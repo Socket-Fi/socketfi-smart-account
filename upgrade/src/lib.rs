@@ -7,9 +7,9 @@ pub mod voters;
 
 use crate::errors::UpgradeError;
 use crate::storage::{
-    clear_pending_upgrade_state, get_upgrade_voting_deadline, read_future_wasm, read_proposal_type,
-    read_wallet_wasm_version, write_future_wasm, write_upgrade_voting_deadline,
-    write_wallet_wasm_version, DataKey,
+    clear_pending_upgrade_state, get_upgrade_voting_deadline, read_account_wasm_version,
+    read_future_wasm, read_proposal_type, write_account_wasm_version, write_future_wasm,
+    write_upgrade_voting_deadline, DataKey,
 };
 use crate::types::UpgradeType;
 use crate::voters::{read_has_upgrade_passed, write_add_voter, write_remove_voter};
@@ -21,29 +21,29 @@ use storage::{has_active_upgrade_proposal, write_proposal_snapshot};
 use voters::get_voter_info;
 
 // -----------------------------------------------------------------------------
-// Wallet Version Initialization
+// Account Version Initialization
 // -----------------------------------------------------------------------------
 // NOTE:
 // - Intended to be called once during initial contract setup.
-// - Prevents overwriting an already established wallet version hash.
-// - Uses persistent storage because wallet version must survive contract upgrades.
+// - Prevents overwriting an already established account version hash.
+// - Uses persistent storage because account version must survive contract upgrades.
 //
 // SECURITY:
 // - This helper does not perform auth itself.
 // - It should only be called from a protected initialization path.
 //
 // ERROR:
-// - AlreadyInitialized -> if wallet version has already been set.
-pub fn init_wallet_wasm_hash(e: &Env, wallet_version: &BytesN<32>) -> Result<(), UpgradeError> {
+// - AlreadyInitialized -> if account version has already been set.
+pub fn init_account_wasm_hash(e: &Env, account_version: &BytesN<32>) -> Result<(), UpgradeError> {
     if e.storage()
         .persistent()
-        .get::<_, BytesN<32>>(&DataKey::WalletVersion)
+        .get::<_, BytesN<32>>(&DataKey::AccountVersion)
         .is_some()
     {
         return Err(UpgradeError::AlreadyInitialized);
     }
 
-    write_wallet_wasm_version(e, wallet_version);
+    write_account_wasm_version(e, account_version);
     Ok(())
 }
 
@@ -177,11 +177,11 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
             }
             .publish(&e);
         }
-        UpgradeType::WalletVersion => {
-            write_wallet_wasm_version(e, &new_wasm_hash);
+        UpgradeType::AccountVersion => {
+            write_account_wasm_version(e, &new_wasm_hash);
             clear_pending_upgrade_state(e);
 
-            events::WalletVersionUpgradeEvent {
+            events::AccountVersionUpgradeEvent {
                 wasm: new_wasm_hash.clone(),
             }
             .publish(&e);
@@ -216,12 +216,12 @@ pub fn get_upgrade_votes(e: &Env) -> Result<(u32, bool), UpgradeError> {
     read_has_upgrade_passed(e)
 }
 
-// Returns the currently approved wallet version hash, if set.
+// Returns the currently approved account version hash, if set.
 //
 // NOTE:
-// - Returns None if wallet version has not been initialized yet.
-pub fn read_wallet_wasm_hash(e: &Env) -> Option<BytesN<32>> {
-    read_wallet_wasm_version(e)
+// - Returns None if account version has not been initialized yet.
+pub fn read_account_wasm_hash(e: &Env) -> Option<BytesN<32>> {
+    read_account_wasm_version(e)
 }
 
 // Updates the current governance voter set.

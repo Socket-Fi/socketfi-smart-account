@@ -1,8 +1,8 @@
 use crate::states::DataKey;
 use socketfi_shared::{
+    account_error::AccountError,
     constants::{GUARDIAN_REMOVAL_DELAY_LEDGERS, MAX_GUARDIANS},
     key_types::GuardianInfo,
-    wallet_error::WalletError,
 };
 use soroban_sdk::{Address, Env, Vec};
 
@@ -82,9 +82,9 @@ pub fn guardian_can_approve_unpause(env: &Env, guardian: &Address) -> bool {
     false
 }
 
-pub fn validate_guardians(guardians: &Vec<Address>) -> Result<(), WalletError> {
+pub fn validate_guardians(guardians: &Vec<Address>) -> Result<(), AccountError> {
     if guardians.len() > MAX_GUARDIANS {
-        return Err(WalletError::MaxGuardiansExceeded);
+        return Err(AccountError::MaxGuardiansExceeded);
     }
 
     for i in 0..guardians.len() {
@@ -94,7 +94,7 @@ pub fn validate_guardians(guardians: &Vec<Address>) -> Result<(), WalletError> {
             let g2 = guardians.get(j).unwrap();
 
             if g1 == g2 {
-                return Err(WalletError::DuplicateGuardian);
+                return Err(AccountError::DuplicateGuardian);
             }
         }
     }
@@ -108,9 +108,9 @@ pub fn write_guardian_infos(env: &Env, guardians: Vec<GuardianInfo>) {
         .set(&DataKey::Guardians, &guardians);
 }
 
-pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), WalletError> {
+pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {
     if is_paused(env) {
-        return Err(WalletError::WalletPaused);
+        return Err(AccountError::AccountPaused);
     }
 
     let mut guardians = read_guardians(env);
@@ -121,7 +121,7 @@ pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), Wall
 
         if g.address == guardian {
             if g.removal_time.is_some() {
-                return Err(WalletError::RemovalAlreadyScheduled);
+                return Err(AccountError::RemovalAlreadyScheduled);
             }
 
             g.removal_time = Some(removal_time);
@@ -131,10 +131,10 @@ pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), Wall
         }
     }
 
-    Err(WalletError::GuardianNotFound)
+    Err(AccountError::GuardianNotFound)
 }
 
-pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), WalletError> {
+pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {
     let mut guardians = read_guardians(env);
     let now = env.ledger().sequence();
 
@@ -147,11 +147,11 @@ pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), Wall
 
         let removal_time = match g.removal_time {
             Some(time) => time,
-            None => return Err(WalletError::RemovalNotScheduled),
+            None => return Err(AccountError::RemovalNotScheduled),
         };
 
         if now < removal_time {
-            return Err(WalletError::GuardianRemovalDelayNotElapsed);
+            return Err(AccountError::GuardianRemovalDelayNotElapsed);
         }
 
         guardians.remove(i);
@@ -164,21 +164,21 @@ pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), Wall
     Ok(())
 }
 
-pub fn add_new_guardian(env: &Env, guardian: Address) -> Result<(), WalletError> {
+pub fn add_new_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {
     if is_paused(env) {
-        return Err(WalletError::WalletPaused);
+        return Err(AccountError::AccountPaused);
     }
 
     let mut guardians = read_guardians(env);
 
     for g in guardians.iter() {
         if g.address == guardian {
-            return Err(WalletError::DuplicateGuardian);
+            return Err(AccountError::DuplicateGuardian);
         }
     }
 
     if guardians.len() + 1 > MAX_GUARDIANS {
-        return Err(WalletError::MaxGuardiansExceeded);
+        return Err(AccountError::MaxGuardiansExceeded);
     }
 
     guardians.push_back(GuardianInfo {

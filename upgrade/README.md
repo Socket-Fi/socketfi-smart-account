@@ -2,7 +2,7 @@
 
 The **Upgrade Contract** manages governance-driven upgrades for core contracts within the SocketFi ecosystem.
 
-It enables secure proposal, voting, and execution of contract upgrades (e.g. wallet versions) using a controlled multi-voter mechanism.
+It enables secure proposal, voting, and execution of contract upgrades (e.g. account versions) using a controlled multi-voter mechanism.
 
 ---
 
@@ -22,7 +22,7 @@ The Upgrade contract is responsible for:
 ### Proposal System
 
 - Create upgrade proposals with a target WASM hash
-- Supports multiple upgrade types (e.g. wallet, protocol)
+- Supports multiple upgrade types (e.g. account, protocol)
 - Ensures only one active proposal at a time
 
 ### Voting
@@ -101,8 +101,8 @@ Cancels the active proposal.
 
 Works with:
 
-- Factory Contract → applies wallet upgrades
-- Wallet Contract → receives updated WASM version
+- Factory Contract → applies account upgrades
+- Account Contract → receives updated WASM version
 - Governance system → manages voter set
 
 ---
