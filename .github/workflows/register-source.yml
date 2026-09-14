@@ -35,7 +35,7 @@ jobs:
       - name: Submit verified public metadata from GitHub Actions
         shell: python
         run: |
-          import json, os, pathlib, urllib.request
+          import json, os, pathlib, urllib.request, urllib.error
           manifest = json.loads(pathlib.Path('/tmp/deployed-release/build.json').read_text())
           results = []
           for name, package in [('socketfi_factory.wasm', 'socketfi-factory'), ('socketfi_account.wasm', 'socketfi-account')]:
@@ -49,13 +49,22 @@ jobs:
               }
               req = urllib.request.Request('https://api.stellar.expert/explorer/public/contract-validation/match',
                   data=json.dumps(payload).encode(), headers={'Content-Type':'application/json'}, method='POST')
-              with urllib.request.urlopen(req, timeout=30) as response:
-                  body = response.read().decode()
-                  result = {'request': payload, 'httpStatus': response.status, 'response': body}
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      result = {'request': payload, 'httpStatus': response.status, 'response': response.read().decode()}
+              except urllib.error.HTTPError as error:
+                  result = {'request': payload, 'httpStatus': error.code, 'response': error.read().decode(errors='replace')}
               print(json.dumps(result))
               results.append(result)
+              if result['httpStatus'] == 403:
+                  break  # Preserve denial evidence; do not retry a forbidden request.
           pathlib.Path('source-registration-results.json').write_text(json.dumps(results, indent=2)+'\n')
-          if not all(json.loads(r['response']).get('ok') == 1 for r in results):
+          def acknowledged(result):
+              try:
+                  return result['httpStatus'] == 200 and json.loads(result['response']).get('ok') == 1
+              except (ValueError, AttributeError):
+                  return False
+          if len(results) != 2 or not all(acknowledged(r) for r in results):
               raise SystemExit('Stellar Expert did not acknowledge queue insertion. HTTP 200 alone is not verification.')
       - name: Preserve registration evidence
         if: always()
