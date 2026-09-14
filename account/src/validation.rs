@@ -55,7 +55,7 @@ pub fn verify_each_bls_key(
     // Access BLS12-381 operations from the Soroban crypto interface.
     let bls = e.crypto().bls12_381();
 
-    let dst: Bytes = Bytes::from_slice(&e, DST.as_bytes());
+    let dst: Bytes = Bytes::from_slice(e, DST.as_bytes());
 
     // Load the negative G1 generator used in the pairing equation.
     let neg_g1 = G1Affine::from_bytes(g1_group_gen_point(e));
@@ -126,11 +126,11 @@ pub fn validate_verify_bls_key_set_pop(
     challenge: BytesN<32>,
     bls_keys_pop: Vec<BlsKeyWithPoP>,
 ) -> Result<BytesN<96>, AccountError> {
-    let keys = extract_bls_keys(&env, bls_keys_pop.clone());
+    let keys = extract_bls_keys(env, bls_keys_pop.clone());
     let agg = validate_bls_key_set(env, keys)?;
 
     for bls_key_pop in bls_keys_pop.iter() {
-        verify_each_bls_key(&env, challenge.clone(), bls_key_pop)?;
+        verify_each_bls_key(env, challenge.clone(), bls_key_pop)?;
     }
     Ok(agg)
 }
@@ -152,7 +152,7 @@ pub fn verify_passkey_pop(
     validate_passkey_assertion_data(
         env,
         challenge,
-        expected_rpid_hash.into(),
+        expected_rpid_hash,
         passkey_sig.clone().authenticator_data,
         passkey_sig.clone().client_data_json,
     )?;

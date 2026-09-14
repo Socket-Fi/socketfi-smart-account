@@ -50,7 +50,7 @@ pub fn compute_approval_threshold(voter_count: u32) -> u32 {
     let numerator = voter_count * VOTING_THRESHOLD;
     let mut threshold = numerator / 100;
 
-    if numerator % 100 != 0 {
+    if !numerator.is_multiple_of(100) {
         threshold += 1;
     }
 

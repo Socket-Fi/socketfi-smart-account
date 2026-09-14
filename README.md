@@ -255,6 +255,9 @@ without RPC access, wallet funding, or chain deployment.
 See [the RP-ID release checklist](docs/rpid-release.md) before releasing these
 account and factory changes together.
 
+For signed repository provenance and independent reproduction, see
+[Verified contract releases](docs/verified-releases.md).
+
 ## Security Model
 
 SocketFi's security depends on the combined enforcement of:

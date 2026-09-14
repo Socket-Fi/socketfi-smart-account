@@ -13,6 +13,8 @@ pub trait AccountTrait {
     /// guardian recovery keys, deployment metadata, and initial account state.
     /// `rpid_hash` must be present even for an initial Stellar or EVM signer;
     /// its optional encoding is retained for ABI compatibility.
+    // Preserve the deployed constructor ABI.
+    #[allow(clippy::too_many_arguments)]
     fn __constructor(
         env: Env,
         challenge: BytesN<32>,
@@ -79,7 +81,6 @@ pub trait AccountTrait {
     fn unpause(env: Env) -> Result<(), AccountError>;
 
     /// Adds a guardian to the account.
-
     fn add_guardian(env: Env, guardian: Address) -> Result<(), AccountError>;
 
     /// Begins the delayed removal of a guardian.

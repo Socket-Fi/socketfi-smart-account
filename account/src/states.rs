@@ -17,6 +17,8 @@ pub enum DataKey {
     EvmSigner,
     Nonce,
     RpidHash,
+    // This name is serialized on-chain; changing it would change the storage key.
+    #[allow(clippy::upper_case_acronyms)]
     RPID,
 }
 

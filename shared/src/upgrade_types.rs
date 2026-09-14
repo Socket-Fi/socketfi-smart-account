@@ -56,12 +56,14 @@ impl UpgradeType {
     /// GAS NOTE:
     /// - Constructs temporary `String` values for comparison
     /// - Cost is minimal due to small input size
+    // Keep the existing public Rust helper name for downstream callers.
+    #[allow(clippy::self_named_constructors)]
     pub fn upgrade_type(s: String) -> Option<Self> {
         let e = s.env();
 
-        if s == String::from_str(&e, "upgrade") {
+        if s == String::from_str(e, "upgrade") {
             Some(Self::Upgrade)
-        } else if s == String::from_str(&e, "account") {
+        } else if s == String::from_str(e, "account") {
             Some(Self::AccountVersion)
         } else {
             None

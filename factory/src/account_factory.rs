@@ -58,7 +58,7 @@ pub fn read_creation_pop_challenge(
     nonce: &BytesN<32>,
     network: &Symbol,
 ) -> Result<BytesN<32>, AccountError> {
-    validate_network(e, &network)?;
+    validate_network(e, network)?;
 
     if read_creation_nonce_used(e, nonce) {
         return Err(AccountError::NonceAlreadyUsed);
@@ -84,6 +84,8 @@ pub fn read_creation_pop_challenge(
  *
  * Exactly one owner-authentication method must be configured.
  */
+// Keep this adapter aligned with the existing factory constructor arguments.
+#[allow(clippy::too_many_arguments)]
 pub fn write_create_account(
     e: &Env,
     challenge: BytesN<32>,

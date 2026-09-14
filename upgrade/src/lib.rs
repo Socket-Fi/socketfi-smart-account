@@ -79,7 +79,7 @@ pub fn create_upgrade_proposal(
         wasm: wasm_hash.clone(),
         voting_deadline: deadline,
     }
-    .publish(&e);
+    .publish(e);
 
     Ok(())
 }
@@ -135,7 +135,7 @@ pub fn write_cast_vote(
         wasm: wasm_hash.clone(),
         voter: voter.clone(),
     }
-    .publish(&e);
+    .publish(e);
 
     Ok(())
 }
@@ -175,7 +175,7 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
             events::ContractUpgradeEvent {
                 wasm: new_wasm_hash.clone(),
             }
-            .publish(&e);
+            .publish(e);
         }
         UpgradeType::AccountVersion => {
             write_account_wasm_version(e, &new_wasm_hash);
@@ -184,7 +184,7 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
             events::AccountVersionUpgradeEvent {
                 wasm: new_wasm_hash.clone(),
             }
-            .publish(&e);
+            .publish(e);
         }
     }
 
@@ -201,7 +201,7 @@ pub fn cancel_upgrade_proposal(e: &Env) -> Result<(), UpgradeError> {
     let wasm = read_future_wasm(e).ok_or(UpgradeError::NoPendingUpgradeAction)?;
     clear_pending_upgrade_state(e);
 
-    events::UpgradeCancelledEvent { wasm: wasm.clone() }.publish(&e);
+    events::UpgradeCancelledEvent { wasm: wasm.clone() }.publish(e);
     Ok(())
 }
 

@@ -16,6 +16,8 @@ pub trait FactoryTrait {
 
     // account creation
 
+    // Preserve the public creation ABI consumed by SDKs and clients.
+    #[allow(clippy::too_many_arguments)]
     fn create_account(
         e: Env,
         passkey: Option<BytesN<65>>,

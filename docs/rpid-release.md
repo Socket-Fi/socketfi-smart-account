@@ -78,7 +78,12 @@ compatibility, factory RP ID, administration/governance permissions, artifact
 hashes, API contract configuration, and creation/rotation flow on a test network.
 Keep TESTNET and PUBLIC release records and configuration separate.
 
-## Local validation results (2026-09-14)
+## Historical validation results (initial RP-ID build, 2026-09-14)
+
+The Clippy failures below describe the initial build. They were subsequently
+resolved by mechanical fixes and narrowly scoped compatibility exceptions; the
+verified-release workflow now requires strict Clippy. See `verified-releases.md`
+for the current release process.
 
 - `make build`: passed; both optimized WASMs built with the pinned workspace.
 - `make test`: passed, eight unit tests; WASM integration is intentionally ignored
@@ -94,8 +99,9 @@ Keep TESTNET and PUBLIC release records and configuration separate.
 - `cargo clippy --locked --workspace --all-targets`: completes with existing
   warnings across shared, upgrade, factory, and account code.
 
-The restored build and focused regressions are verified locally. Strict lint is
-not clean and a production deployment has not been approved or performed.
+At this initial validation, the restored build and focused regressions passed,
+but strict lint was not clean. The subsequent verified-release changes resolve
+those warnings. No production deployment was performed.
 
 Two builds in independent output directories on the same host produced identical
 SHA-256 hashes (cross-host reproduction has not been tested):

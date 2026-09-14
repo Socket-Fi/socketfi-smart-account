@@ -45,9 +45,6 @@ impl FactoryTrait for FactoryContract {
     }
 
     /// Deploys and initializes a new account after verifying creation proofs.
-    ///
-    ///
-
     fn create_account(
         e: Env,
         passkey: Option<BytesN<65>>,

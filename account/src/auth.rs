@@ -23,7 +23,7 @@ use socketfi_shared::{
 /// - Converts the shared BLS DST constant into `Bytes` for hashing.
 /// - Used during message hashing in signature verification.
 fn read_dst_bytes(e: &Env) -> Bytes {
-    Bytes::from_slice(&e, DST.as_bytes())
+    Bytes::from_slice(e, DST.as_bytes())
 }
 
 /// Verifies a WebAuthn passkey assertion against the account's registered passkey.
@@ -34,7 +34,7 @@ fn read_dst_bytes(e: &Env) -> Bytes {
 ///    (challenge, origin, type, RP ID hash, flags, etc.).
 /// 3. Compute SHA-256 over `client_data_json`.
 /// 4. Construct the WebAuthn signed payload:
-///      authenticatorData || SHA256(clientDataJSON)
+///    authenticatorData || SHA256(clientDataJSON)
 /// 5. Hash the payload and verify the P-256 signature against the
 ///    registered account passkey.
 ///
@@ -42,7 +42,6 @@ fn read_dst_bytes(e: &Env) -> Bytes {
 /// - `Ok(())` if the assertion is cryptographically valid and bound
 ///   to the expected challenge and RP ID.
 /// - `AccountError` if validation or signature verification fails.
-
 pub fn verify_passkey(
     env: &Env,
     challenge: BytesN<32>,
@@ -187,8 +186,8 @@ pub fn verify_bls_key(
     let bls = env.crypto().bls12_381();
 
     // Read aggregated public key and domain separation tag used for verification.
-    let agg_pk: BytesN<96> = read_agg_bls_key(&env).unwrap();
-    let dst: Bytes = read_dst_bytes(&env);
+    let agg_pk: BytesN<96> = read_agg_bls_key(env).unwrap();
+    let dst: Bytes = read_dst_bytes(env);
 
     // Load the negative G1 generator used in the pairing equation.
     let neg_g1 = G1Affine::from_bytes(g1_group_gen_point(env));
