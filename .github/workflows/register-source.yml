@@ -1,0 +1,67 @@
+name: Register deployed contract source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  register:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RELEASE_COMMIT: 2bce17d02dd2ee8a8ad13a7f68a6f4cb3e44f8f6
+      RELEASE_RUN: '34905045397'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Download and verify the deployed release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$RELEASE_RUN" --repo Socket-Fi/socketfi-smart-account \
+            --name "socketfi-verified-$RELEASE_COMMIT" --dir /tmp/deployed-release
+          for subject in socketfi_account.wasm socketfi_factory.wasm source.tar build.json; do
+            gh attestation verify "/tmp/deployed-release/$subject" \
+              --repo Socket-Fi/socketfi-smart-account \
+              --signer-workflow Socket-Fi/socketfi-smart-account/.github/workflows/verified-release.yml \
+              --source-digest "$RELEASE_COMMIT" --deny-self-hosted-runners
+          done
+          python3 -B -c 'import os,sys; sys.path.insert(0,"scripts"); import release; release.validate("/tmp/deployed-release",os.environ["RELEASE_COMMIT"])'
+      - name: Submit verified public metadata from GitHub Actions
+        shell: python
+        run: |
+          import json, os, pathlib, urllib.request
+          manifest = json.loads(pathlib.Path('/tmp/deployed-release/build.json').read_text())
+          results = []
+          for name, package in [('socketfi_factory.wasm', 'socketfi-factory'), ('socketfi_account.wasm', 'socketfi-account')]:
+              payload = {
+                  'repository': 'https://github.com/Socket-Fi/socketfi-smart-account',
+                  'commitHash': os.environ['RELEASE_COMMIT'],
+                  'jobId': 'attest',
+                  'runId': os.environ['RELEASE_RUN'],
+                  'contractHash': manifest['wasms'][name],
+                  'packageName': package,
+              }
+              req = urllib.request.Request('https://api.stellar.expert/explorer/public/contract-validation/match',
+                  data=json.dumps(payload).encode(), headers={'Content-Type':'application/json'}, method='POST')
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  body = response.read().decode()
+                  result = {'request': payload, 'httpStatus': response.status, 'response': body}
+              print(json.dumps(result))
+              results.append(result)
+          pathlib.Path('source-registration-results.json').write_text(json.dumps(results, indent=2)+'\n')
+          if not all(json.loads(r['response']).get('ok') == 1 for r in results):
+              raise SystemExit('Stellar Expert did not acknowledge queue insertion. HTTP 200 alone is not verification.')
+      - name: Preserve registration evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: source-registration-results
+          path: source-registration-results.json
+          if-no-files-found: ignore
+          retention-days: 30
