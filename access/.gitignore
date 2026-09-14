@@ -6,8 +6,6 @@ target/
 **/*.rs~
 
 # Ignore dependency directories for various tools
-Cargo.lock
-Cargo.toml
 *.rlib
 
 

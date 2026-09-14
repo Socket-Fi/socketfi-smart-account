@@ -3,3 +3,6 @@ mod account_factory;
 mod contract;
 mod contract_trait;
 mod data;
+
+#[cfg(test)]
+mod rpid_tests;

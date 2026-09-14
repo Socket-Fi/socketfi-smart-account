@@ -1,0 +1,21 @@
+[package]
+name = "socketfi-factory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+socketfi-shared = { path = "../shared" }
+socketfi-access = { path = "../access" }
+upgrade = { path = "../upgrade" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+k256 = { workspace = true }
+p256 = { workspace = true }

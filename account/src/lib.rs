@@ -9,3 +9,6 @@ mod session_policy;
 mod signer_management;
 mod states;
 mod validation;
+
+#[cfg(test)]
+mod rpid_tests;

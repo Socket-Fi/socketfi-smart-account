@@ -1,16 +1,13 @@
-default: build
-
-all: test
-
-test: build
-	cargo test
+.PHONY: build test fmt clean
 
 build:
-	soroban contract build
-	@ls -l target/wasm32-unknown-unknown/release/*.wasm
+	cargo build --locked --release --target wasm32v1-none -p socketfi-access
+
+test:
+	cargo test --locked -p socketfi-access
 
 fmt:
-	cargo fmt --all
+	cargo fmt -p socketfi-access
 
 clean:
-	cargo clean
+	cargo clean -p socketfi-access

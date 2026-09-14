@@ -106,10 +106,11 @@ pub fn write_create_account(
      * Supported configurations:
      * - passkey only
      * - Stellar signer only
+     * - EVM signer only
      *
      * This preserves your current mutually exclusive design.
      */
-    let rpid_hash: Option<BytesN<32>> = match (
+    match (
         &passkey,
         &passkey_sig,
         &stellar_signer,
@@ -120,7 +121,7 @@ pub fn write_create_account(
         /*
          * Passkey-owned account.
          */
-        (Some(_), Some(_), None, None, None, None) => Some(read_rpid_hash(e)?),
+        (Some(_), Some(_), None, None, None, None) => {}
 
         /*
          * Native Stellar-owned account.
@@ -130,7 +131,6 @@ pub fn write_create_account(
          */
         (None, None, Some(_), Some(stellar_address), None, None) => {
             stellar_address.require_auth();
-            None
         }
 
         /*
@@ -139,7 +139,7 @@ pub fn write_create_account(
          * The account constructor verifies evm_sig as proof of
          * possession before storing evm_signer.
          */
-        (None, None, None, None, Some(_), Some(_)) => None,
+        (None, None, None, None, Some(_), Some(_)) => {}
 
         /*
          * Reject incomplete, empty or mixed configurations.
@@ -148,6 +148,10 @@ pub fn write_create_account(
             return Err(AccountError::InvalidConfig);
         }
     };
+
+    // Snapshot the factory's trusted RP configuration for every signer type.
+    // This does not install a passkey or relax any proof-of-possession check.
+    let rpid_hash = Some(read_rpid_hash(e)?);
 
     /*
      * Avoid unwrap() because a missing account WASM hash would

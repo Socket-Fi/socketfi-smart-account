@@ -72,10 +72,12 @@ impl AccountTrait for Account {
 
         validate_guardians(&guardians)?;
 
-        let passkey_configured: bool =
-            passkey.is_some() && passkey_sig.is_some() && rpid_hash.is_some();
+        // RP configuration belongs to the account, not its initial signer.
+        // Keep the optional ABI field, but require it for every new account.
+        let rpid_hash = rpid_hash.ok_or(AccountError::RpidNotFound)?;
 
-        let passkey_absent = passkey.is_none() && passkey_sig.is_none() && rpid_hash.is_none();
+        let passkey_configured = passkey.is_some() && passkey_sig.is_some();
+        let passkey_absent = passkey.is_none() && passkey_sig.is_none();
 
         let stellar_configured = stellar_signer.is_some() && stellar_address.is_some();
 
@@ -108,8 +110,8 @@ impl AccountTrait for Account {
         /* Install passkey owner. */
         /* Install Stellar owner. */
         /* Install EVM owner. */
-        match (passkey, passkey_sig, rpid_hash) {
-            (Some(passkey), Some(passkey_sig), Some(rpid_hash)) => {
+        match (passkey, passkey_sig) {
+            (Some(passkey), Some(passkey_sig)) => {
                 verify_passkey_pop(
                     &env,
                     challenge.clone(),
@@ -119,11 +121,9 @@ impl AccountTrait for Account {
                 )?;
 
                 write_passkey(&env, &passkey);
-
-                write_rpid_hash(&env, &rpid_hash);
             }
 
-            (None, None, None) => {}
+            (None, None) => {}
 
             _ => {
                 return Err(AccountError::InvalidConfig);
@@ -167,6 +167,7 @@ impl AccountTrait for Account {
         let bls_agg = validate_verify_bls_key_set_pop(&env, challenge, bls_keys_pop)?;
 
         write_agg_bls_key(&env, &bls_agg)?;
+        write_rpid_hash(&env, &rpid_hash);
 
         write_guardians(&env, guardians);
 

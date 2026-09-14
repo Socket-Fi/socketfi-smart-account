@@ -135,7 +135,7 @@ During initialization, the contract:
 4. Verifies each BLS recovery-key proof of possession.
 5. Aggregates and stores the BLS recovery public key.
 6. Stores the immutable factory address.
-7. Stores the RP ID hash required for passkey verification.
+7. Stores the factory-provided RP ID hash for every initial signer type, including Stellar and EVM.
 8. Initializes the guardian set.
 9. Initializes the session epoch.
 10. Starts the account in the unpaused state.
@@ -424,3 +424,23 @@ flowchart TD
 ## License
 
 MIT
+
+
+### RP configuration for newly created accounts
+
+Every new account requires a trusted RP ID hash, independently of whether its
+initial signer is passkey, Stellar, or EVM. The factory supplies its configured
+hash; it does not accept a caller-selected override. Initializing an EVM or
+Stellar account stores this hash without installing a passkey. A missing hash
+is rejected with `RpidNotFound`.
+
+Rotation and recovery preserve this account-level configuration and continue to
+verify a replacement passkey against it. This fixes the missing-RP prerequisite;
+it does not bypass current-owner authorization, replacement proof of possession,
+or recovery authorization. The constructor retains its `Option<BytesN<32>>` ABI,
+but new direct deployments must supply `Some(hash)` for every signer type.
+
+Release the updated account implementation and factory creation logic together:
+the old factory sends no hash for non-passkey accounts, while the old account
+constructor rejects a hash supplied without a passkey. Existing accounts are not
+modified, and accounts already missing the hash are not backfilled by this change.

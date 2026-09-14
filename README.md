@@ -224,55 +224,36 @@ socketfi/
 
 ### Requirements
 
-- Rust stable
-- Cargo
-- Soroban CLI
-- A compatible Soroban SDK version
-- WebAssembly compilation target
+The workspace pins Rust **1.91.0**, Soroban SDK **25.3.1**, and the
+`wasm32v1-none` target. Rustup reads `rust-toolchain.toml`; `Cargo.lock` fixes
+transitive dependency versions. Commit all workspace/package manifests and the
+root lockfile together. A Stellar CLI is not required for local builds/tests.
 
-Install the WASM target:
+### Build and Test
 
-```bash
-rustup target add wasm32v1-none
-```
-
-### Build
-
-Build the workspace:
+Run from this repository root:
 
 ```bash
-cargo build --workspace
+make build       # optimized account + factory WASMs; no deployment
+make test        # workspace unit tests
+make test-wasm   # builds both WASMs, then runs local host integration tests
+make fmt-check
+make lint
 ```
 
-Build optimized Soroban contracts:
+The WASMs are written to:
 
-```bash
-stellar contract build
-```
+- `target/wasm32v1-none/release/socketfi_account.wasm`
+- `target/wasm32v1-none/release/socketfi_factory.wasm`
 
-### Test
+Individual package tests use `cargo test --locked -p socketfi-account` or
+`cargo test --locked -p socketfi-factory`. The WASM lifecycle test is intentionally
+ignored by ordinary `cargo test`: run `make test-wasm` to execute it against the
+compiled artifacts. It runs entirely in a local Soroban host with synthetic keys,
+without RPC access, wallet funding, or chain deployment.
 
-Run all workspace tests:
-
-```bash
-cargo test --workspace
-```
-
-Run tests for an individual package:
-
-```bash
-cargo test -p account
-cargo test -p factory
-```
-
-### Format and Lint
-
-```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-```
-
-Package names and commands should be adjusted if the workspace uses prefixed Cargo package names such as `socketfi-account`.
+See [the RP-ID release checklist](docs/rpid-release.md) before releasing these
+account and factory changes together.
 
 ## Security Model
 

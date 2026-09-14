@@ -195,7 +195,7 @@ The challenge should commit to all security-relevant creation data, including:
 - Creation nonce
 - Owner authentication type
 - Owner public key or credential
-- RP ID hash when passkey authentication is selected
+- RP ID hash for every selected authentication method, including Stellar and EVM
 - Guardian addresses
 - Guardian BLS public keys
 - Any other constructor configuration that affects authority
@@ -516,3 +516,16 @@ Tests should cover:
 ## License
 
 MIT
+
+
+### RP configuration deployment compatibility
+
+Creation always passes `Some(factory_rpid_hash)` to the account constructor,
+including EVM and Stellar ownership. The hash remains factory-controlled and
+the public `create_account` inputs are unchanged. Missing factory RP configuration
+fails closed. Signer selection and Stellar authorization are unchanged.
+
+The matching account implementation must accept RP configuration independently
+of passkey presence. Roll out the factory logic and matching account WASM as a
+coordinated release; mixed old/new versions reject non-passkey creation. Do not
+resume creation until both versions are active. Existing accounts are unaffected.

@@ -11,6 +11,8 @@ use crate::session_policy::{SessionPolicy, SessionPolicyInput};
 pub trait AccountTrait {
     /// Initializes the account with at least one owner authentication method,
     /// guardian recovery keys, deployment metadata, and initial account state.
+    /// `rpid_hash` must be present even for an initial Stellar or EVM signer;
+    /// its optional encoding is retained for ABI compatibility.
     fn __constructor(
         env: Env,
         challenge: BytesN<32>,
