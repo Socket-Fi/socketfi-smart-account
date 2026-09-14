@@ -16,7 +16,7 @@ pub trait FactoryTrait {
 
     // account creation
 
-    // Preserve the public creation ABI consumed by SDKs and clients.
+    // The V2 creation ABI includes the signed expiry as its final argument.
     #[allow(clippy::too_many_arguments)]
     fn create_account(
         e: Env,
@@ -31,6 +31,7 @@ pub trait FactoryTrait {
         nonce: BytesN<32>,
         network: Symbol,
         guardians: Vec<Address>,
+        live_until_ledger: u32,
     ) -> Result<Address, AccountError>;
 
     // Update admin.
@@ -65,6 +66,7 @@ pub trait FactoryTrait {
         e: Env,
         nonce: BytesN<32>,
         network: Symbol,
+        live_until_ledger: u32,
     ) -> Result<BytesN<32>, AccountError>;
 
     /// Get admin address.

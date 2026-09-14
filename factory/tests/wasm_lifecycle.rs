@@ -125,27 +125,44 @@ fn create_evm_account(env: &Env, key: &EvmKey) -> (Address, BytesN<32>) {
     );
     let nonce = BytesN::from_array(env, &[11; 32]);
     let network = Symbol::new(env, "TESTNET");
+    let expiry = env.ledger().sequence() + 120;
     let challenge: BytesN<32> = env.invoke_contract(
         &factory,
         &Symbol::new(env, "get_pop_challenge"),
-        (&nonce, &network).into_val(env),
+        (&nonce, &network, expiry).into_val(env),
     );
-    let address: Address = env.invoke_contract(
+    let args: Vec<Val> = (
+        None::<BytesN<65>>,
+        None::<PasskeySignature>,
+        None::<BytesN<32>>,
+        None::<Address>,
+        Some(evm_address(env, key)),
+        Some(evm_sign(env, key, &challenge)),
+        bls_proofs(env, &challenge),
+        nonce.clone(),
+        network.clone(),
+        Vec::<Address>::new(env),
+        expiry,
+    )
+        .into_val(env);
+    let function = Symbol::new(env, "create_account");
+    // Changing only expiry invalidates the existing real EVM/BLS proofs.
+    let mut tampered = args.clone();
+    tampered.set(10, (expiry - 1).into_val(env));
+    assert!(env
+        .try_invoke_contract::<Address, AccountError>(&factory, &function, tampered)
+        .is_err());
+    // The failed deployment must not consume the nonce.
+    let after_failure: BytesN<32> = env.invoke_contract(
         &factory,
-        &Symbol::new(env, "create_account"),
-        (
-            None::<BytesN<65>>,
-            None::<PasskeySignature>,
-            None::<BytesN<32>>,
-            None::<Address>,
-            Some(evm_address(env, key)),
-            Some(evm_sign(env, key, &challenge)),
-            bls_proofs(env, &challenge),
-            nonce,
-            network,
-            Vec::<Address>::new(env),
-        )
-            .into_val(env),
+        &Symbol::new(env, "get_pop_challenge"),
+        (&nonce, &network, expiry).into_val(env),
+    );
+    assert_eq!(after_failure, challenge);
+    let address: Address = env.invoke_contract(&factory, &function, args.clone());
+    assert_eq!(
+        env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
+        Err(Ok(AccountError::NonceAlreadyUsed))
     );
     let rp_hash = env
         .crypto()
@@ -313,4 +330,102 @@ fn factory_evm_creation_and_authenticated_passkey_rotation() {
     });
     let next_epoch: u64 = env.invoke_contract(&account, &Symbol::new(&env, action), empty);
     assert_eq!(next_epoch, 2);
+}
+
+#[test]
+#[ignore = "build both release WASMs first with make build"]
+fn factory_creation_expiry_for_passkey_and_stellar() {
+    for stellar in [false, true] {
+        for expired in [false, true] {
+            let env = Env::default();
+            env.cost_estimate().budget().reset_unlimited();
+            env.ledger().set_sequence_number(1000);
+            let wasm = env
+                .deployer()
+                .upload_contract_wasm(load_wasm("socketfi_account").as_slice());
+            let factory = env.register(
+                load_wasm("socketfi_factory").as_slice(),
+                (
+                    Address::generate(&env),
+                    String::from_str(&env, "socket.fi"),
+                    wasm,
+                ),
+            );
+            let nonce = BytesN::from_array(&env, &[22; 32]);
+            let network = Symbol::new(&env, "TESTNET");
+            let expiry = 1120u32;
+            let challenge: BytesN<32> = env.invoke_contract(
+                &factory,
+                &Symbol::new(&env, "get_pop_challenge"),
+                (&nonce, &network, expiry).into_val(&env),
+            );
+            let key = PasskeyKey::from_slice(&[3; 32]).unwrap();
+            let rp: BytesN<32> = env
+                .crypto()
+                .sha256(&Bytes::from_slice(&env, b"socket.fi"))
+                .into();
+            let stellar_address = Address::from_str(
+                &env,
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+            );
+            let args: Vec<Val> = (
+                if stellar {
+                    None
+                } else {
+                    Some(passkey_public(&env, &key))
+                },
+                if stellar {
+                    None
+                } else {
+                    Some(passkey_sign(&env, &key, &challenge, &rp))
+                },
+                if stellar {
+                    Some(BytesN::from_array(&env, &[0; 32]))
+                } else {
+                    None
+                },
+                if stellar { Some(stellar_address) } else { None },
+                None::<BytesN<20>>,
+                None::<EvmSignature>,
+                bls_proofs(&env, &challenge),
+                nonce,
+                network,
+                Vec::<Address>::new(&env),
+                expiry,
+            )
+                .into_val(&env);
+            let function = Symbol::new(&env, "create_account");
+            if stellar {
+                // Classic-account authorization is enforced by the host. First
+                // prove missing auth fails, then mock only this host auth path.
+                assert!(env
+                    .try_invoke_contract::<Address, AccountError>(&factory, &function, args.clone())
+                    .is_err());
+                env.mock_all_auths();
+            }
+            env.ledger()
+                .set_sequence_number(if expired { expiry + 1 } else { expiry });
+            if expired {
+                assert_eq!(
+                    env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
+                    Err(Ok(AccountError::CreationProofExpired))
+                );
+            } else {
+                let _: Address = env.invoke_contract(&factory, &function, args.clone());
+                assert_eq!(
+                    env.try_invoke_contract::<Address, AccountError>(
+                        &factory,
+                        &function,
+                        args.clone()
+                    ),
+                    Err(Ok(AccountError::NonceAlreadyUsed))
+                );
+                env.ledger().set_sequence_number(expiry + 1);
+                assert_eq!(
+                    env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
+                    Err(Ok(AccountError::CreationProofExpired))
+                );
+            }
+        }
+    }
 }

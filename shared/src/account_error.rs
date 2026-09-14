@@ -62,6 +62,8 @@ pub enum AccountError {
     // ============================================================
     InvalidNetwork = 500,
     NonceAlreadyUsed = 501,
+    CreationProofExpired = 502,
+    InvalidCreationExpiry = 503,
 
     // ============================================================
     // migration

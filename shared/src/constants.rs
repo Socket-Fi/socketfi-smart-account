@@ -7,6 +7,9 @@ pub const MAX_GUARDIANS: u32 = 5;
 pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const DAY_IN_SECONDS: u64 = 86400;
 pub const MAX_AUTH_WINDOW_LEDGER: u32 = 60;
+/// Maximum lifetime of an account-creation proof (~10 minutes at 5s/ledger).
+pub const MAX_CREATION_WINDOW_LEDGERS: u32 = 120;
+pub const CREATION_DOMAIN: &[u8] = b"SOCKETFI_CREATE_ACCOUNT_POP_V2";
 pub const GUARDIAN_REMOVAL_DELAY_LEDGERS: u32 = DAY_IN_LEDGERS;
 pub const DEFAULT_CLAIM_PERIOD_SECONDS: u64 = 7 * DAY_IN_SECONDS;
 pub const UPGRADE_VOTING_DURATION_SECONDS: u64 = 7 * DAY_IN_SECONDS;

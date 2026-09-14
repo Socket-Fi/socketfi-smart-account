@@ -3,7 +3,7 @@ use crate::data::DataKey;
 use socketfi_shared::{
     account_error::AccountError,
     bls::{g1_group_gen_point, is_g1_infinity},
-    constants::{DST, MAX_BLS_KEYS, MIN_BLS_KEYS},
+    constants::{CREATION_DOMAIN, DST, MAX_BLS_KEYS, MAX_CREATION_WINDOW_LEDGERS, MIN_BLS_KEYS},
     key_types::{BlsKeyWithPoP, EvmSignature, PasskeySignature},
     ttl::bump_instance,
 };
@@ -41,36 +41,58 @@ pub fn write_rpid_hash(e: &Env, rpid: &String) {
     e.storage().instance().set(&DataKey::RPIDHash, &rpid_hash);
 }
 
+/// Keep honoring legacy persistent tombstones if this factory is upgraded.
 pub fn read_creation_nonce_used(e: &Env, nonce: &BytesN<32>) -> bool {
-    e.storage()
-        .persistent()
-        .has(&DataKey::UsedCreationNonce(nonce.clone()))
+    let key = DataKey::UsedCreationNonce(nonce.clone());
+    e.storage().persistent().has(&key) || e.storage().temporary().has(&key)
 }
 
-pub fn write_creation_nonce_used(e: &Env, nonce: &BytesN<32>) {
-    e.storage()
-        .persistent()
-        .set(&DataKey::UsedCreationNonce(nonce.clone()), &true);
+pub fn validate_creation_expiry(e: &Env, live_until_ledger: u32) -> Result<(), AccountError> {
+    let current = e.ledger().sequence();
+    if live_until_ledger < current {
+        return Err(AccountError::CreationProofExpired);
+    }
+    let duration = live_until_ledger - current;
+    if duration > MAX_CREATION_WINDOW_LEDGERS || duration > e.storage().max_ttl() {
+        return Err(AccountError::InvalidCreationExpiry);
+    }
+    Ok(())
+}
+
+pub fn write_creation_nonce_used(
+    e: &Env,
+    nonce: &BytesN<32>,
+    live_until_ledger: u32,
+) -> Result<(), AccountError> {
+    validate_creation_expiry(e, live_until_ledger)?;
+    let key = DataKey::UsedCreationNonce(nonce.clone());
+    e.storage().temporary().set(&key, &true);
+    // TTL is live-until minus current ledger. The proof is valid through the
+    // expiry ledger, so the tombstone must remain readable through that ledger.
+    let duration = live_until_ledger - e.ledger().sequence();
+    e.storage().temporary().extend_ttl(&key, duration, duration);
+    Ok(())
 }
 
 pub fn read_creation_pop_challenge(
     e: &Env,
     nonce: &BytesN<32>,
     network: &Symbol,
+    live_until_ledger: u32,
 ) -> Result<BytesN<32>, AccountError> {
     validate_network(e, network)?;
-
+    validate_creation_expiry(e, live_until_ledger)?;
     if read_creation_nonce_used(e, nonce) {
         return Err(AccountError::NonceAlreadyUsed);
     }
     let rp_id_hash = read_rpid_hash(e)?;
-    let mut salt = Bytes::new(e);
-
-    salt.append(&Bytes::from_slice(e, b"SOCKETFI_CREATE_ACCOUNT_POP"));
+    let mut salt = Bytes::from_slice(e, CREATION_DOMAIN);
+    salt.append(&e.ledger().network_id().to_xdr(e));
+    salt.append(&e.current_contract_address().to_xdr(e));
     salt.append(&network.to_xdr(e));
     salt.append(&rp_id_hash.to_xdr(e));
     salt.append(&nonce.to_xdr(e));
-
+    salt.append(&live_until_ledger.to_xdr(e));
     Ok(e.crypto().sha256(&salt).into())
 }
 

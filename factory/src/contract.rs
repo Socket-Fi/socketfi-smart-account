@@ -58,8 +58,9 @@ impl FactoryTrait for FactoryContract {
         nonce: BytesN<32>,
         network: Symbol,
         guardians: Vec<Address>,
+        live_until_ledger: u32,
     ) -> Result<Address, AccountError> {
-        let challenge = read_creation_pop_challenge(&e, &nonce, &network)?;
+        let challenge = read_creation_pop_challenge(&e, &nonce, &network, live_until_ledger)?;
 
         let account_address = write_create_account(
             &e,
@@ -74,7 +75,7 @@ impl FactoryTrait for FactoryContract {
             guardians,
         )?;
 
-        write_creation_nonce_used(&e, &nonce);
+        write_creation_nonce_used(&e, &nonce, live_until_ledger)?;
 
         events::AccountCreationEvent {
             account: account_address.clone(),
@@ -166,8 +167,9 @@ impl FactoryTrait for FactoryContract {
         e: Env,
         nonce: BytesN<32>,
         network: Symbol,
+        live_until_ledger: u32,
     ) -> Result<BytesN<32>, AccountError> {
-        read_creation_pop_challenge(&e, &nonce, &network)
+        read_creation_pop_challenge(&e, &nonce, &network, live_until_ledger)
     }
 
     /// Returns the current factory admin.

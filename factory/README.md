@@ -156,6 +156,7 @@ The exact parameters depend on the enabled owner-authentication configuration. A
 - `nonce: BytesN<32>`
 - `network: Symbol`
 - `guardians: Vec<Address>`
+- `live_until_ledger: u32` (V2: final argument, signed expiry)
 
 Multi-auth versions may additionally accept an optional Stellar signer, an optional EVM signer, and the corresponding proof of possession.
 
@@ -165,7 +166,7 @@ Returns:
 
 Before deployment, the Factory:
 
-1. Validates the network and creation input.
+1. Validates the network, creation input, and signed expiry (at most 120 ledgers ahead).
 2. Rejects an already consumed nonce.
 3. Constructs the domain-separated creation challenge.
 4. Verifies the selected owner credential’s proof of possession.
@@ -173,9 +174,8 @@ Before deployment, the Factory:
 6. Validates guardian addresses, limits, and uniqueness.
 7. Deploys the approved Account WASM.
 8. Initializes the Account with its immutable Factory reference.
-9. Records the Account in the canonical registry.
-10. Marks the nonce as consumed.
-11. Emits an account-created event.
+9. Marks the nonce as consumed in temporary storage through the expiry ledger.
+10. Emits an account-created event.
 
 All state changes occur in one Soroban transaction and are atomic.
 
@@ -187,35 +187,30 @@ All state changes occur in one Soroban transaction and are atomic.
 
 Returns the deterministic challenge that must be signed to prove control of the proposed owner credential and guardian keys.
 
-The challenge should commit to all security-relevant creation data, including:
-
-- A stable SocketFi creation domain and version
-- Factory contract address
-- Network identifier or network passphrase hash
-- Creation nonce
-- Owner authentication type
-- Owner public key or credential
-- RP ID hash for every selected authentication method, including Stellar and EVM
-- Guardian addresses
-- Guardian BLS public keys
-- Any other constructor configuration that affects authority
-
-Conceptually:
+V2 takes `(nonce, network, live_until_ledger)`. Its exact SHA-256 preimage is:
 
 ```text
-challenge = H(
-    domain,
-    factory,
-    network,
-    nonce,
-    owner_type,
-    owner_credential,
-    recovery_configuration,
-    account_configuration
-)
+raw("SOCKETFI_CREATE_ACCOUNT_POP_V2")
+|| XDR(actual ledger network ID)
+|| XDR(factory address)
+|| XDR(network symbol)
+|| XDR(RP ID hash)
+|| XDR(nonce)
+|| XDR(live_until_ledger)
 ```
 
-Canonical serialization and field ordering are security-critical. The client and contract must construct exactly the same payload.
+All XDR components are Soroban ScVals. The expiry is inclusive and must be no
+more than 120 ledgers ahead of the current ledger. The same expiry is the final
+argument to `create_account`. Changing it invalidates the owner/BLS proofs.
+Temporary replay records remain live through that ledger, then may be deleted;
+the expired proof is rejected even when its nonce entry is gone. Existing legacy
+persistent nonce records are still checked and are not deleted by this change.
+
+The challenge does not serialize the complete owner/guardian configuration.
+Existing signer proof-of-possession and guardian/BLS validation still apply;
+this expiry change is not a full creation-configuration commitment redesign.
+
+See [the rollout guide](../docs/creation-proof-expiry.md).
 
 ---
 
@@ -522,7 +517,8 @@ MIT
 
 Creation always passes `Some(factory_rpid_hash)` to the account constructor,
 including EVM and Stellar ownership. The hash remains factory-controlled and
-the public `create_account` inputs are unchanged. Missing factory RP configuration
+the RP configuration itself adds no account-constructor argument. V2 separately
+adds a signed expiry to the factory creation inputs. Missing factory RP configuration
 fails closed. Signer selection and Stellar authorization are unchanged.
 
 The matching account implementation must accept RP configuration independently
