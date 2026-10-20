@@ -9,11 +9,14 @@ use soroban_sdk::{
 use crate::states::{
     read_agg_bls_key, read_evm_signer, read_passkey, read_rpid_hash, read_stellar_signer,
 };
+use crate::validation::validate_evm_signature_canonical;
 use socketfi_shared::{
     account_error::AccountError,
     bls::g1_group_gen_point,
     constants::{DST, ETH_PERSONAL_SIGN_PREFIX_32},
-    key_types::{BlsSignature, EvmSignature, PasskeySignature, StellarSignature},
+    key_types::{
+        BindingType, BlsSignature, EvmSignature, OwnerSignature, PasskeySignature, StellarSignature,
+    },
     webauthn_validation::validate_passkey_assertion_data,
 };
 
@@ -31,7 +34,7 @@ fn read_dst_bytes(e: &Env) -> Bytes {
 /// Validation flow:
 /// 1. Load and validate the expected RP ID hash.
 /// 2. Validate assertion structure and challenge binding
-///    (challenge, origin, type, RP ID hash, flags, etc.).
+///    (challenge, type, RP ID hash, and flags).
 /// 3. Compute SHA-256 over `client_data_json`.
 /// 4. Construct the WebAuthn signed payload:
 ///    authenticatorData || SHA256(clientDataJSON)
@@ -63,7 +66,7 @@ pub fn verify_passkey(
     signed_payload.extend_from_array(&client_data_hash.to_array());
 
     let digest = env.crypto().sha256(&signed_payload);
-    let passkey = read_passkey(env).unwrap();
+    let passkey = read_passkey(env).ok_or(AccountError::PasskeyNotFound)?;
     env.crypto()
         .secp256r1_verify(&passkey, &digest, &passkey_sig.signature);
 
@@ -75,13 +78,18 @@ pub fn verify_stellar(
     signature_payload: &Hash<32>,
     signature: StellarSignature,
 ) -> Result<(), AccountError> {
+    verify_stellar_payload(env, signature_payload.clone().into(), signature)
+}
+
+fn verify_stellar_payload(
+    env: &Env,
+    signature_payload: BytesN<32>,
+    signature: StellarSignature,
+) -> Result<(), AccountError> {
     let public_key = read_stellar_signer(env).ok_or(AccountError::StellarSignerNotFound)?;
 
-    env.crypto().ed25519_verify(
-        &public_key,
-        &signature_payload.clone().into(),
-        &signature.signature,
-    );
+    env.crypto()
+        .ed25519_verify(&public_key, &signature_payload.into(), &signature.signature);
 
     Ok(())
 }
@@ -91,10 +99,19 @@ pub fn verify_evm(
     signature_payload: &Hash<32>,
     evm_signature: EvmSignature,
 ) -> Result<(), AccountError> {
+    verify_evm_payload(env, signature_payload.clone().into(), evm_signature)
+}
+
+fn verify_evm_payload(
+    env: &Env,
+    signature_payload: BytesN<32>,
+    evm_signature: EvmSignature,
+) -> Result<(), AccountError> {
     // Ethereum recovery identifiers accepted by Soroban are 0 or 1.
     if evm_signature.recovery_id > 1 {
         return Err(AccountError::InvalidEvmRecoveryId);
     }
+    validate_evm_signature_canonical(&evm_signature.signature)?;
 
     let expected_address = read_evm_signer(env).ok_or(AccountError::EvmSignerNotFound)?;
 
@@ -109,9 +126,7 @@ pub fn verify_evm(
      */
     let mut ethereum_message = Bytes::from_slice(env, ETH_PERSONAL_SIGN_PREFIX_32);
 
-    let soroban_payload: BytesN<32> = signature_payload.clone().into();
-
-    let payload_bytes: Bytes = soroban_payload.into();
+    let payload_bytes: Bytes = signature_payload.into();
     ethereum_message.append(&payload_bytes);
 
     let ethereum_digest = env.crypto().keccak256(&ethereum_message);
@@ -167,6 +182,27 @@ pub fn verify_evm(
     Ok(())
 }
 
+pub fn verify_owner_signature(
+    env: &Env,
+    challenge: BytesN<32>,
+    signature: OwnerSignature,
+) -> Result<BindingType, AccountError> {
+    match signature {
+        OwnerSignature::Passkey(signature) => {
+            verify_passkey(env, challenge, signature)?;
+            Ok(BindingType::Passkey)
+        }
+        OwnerSignature::Stellar(signature) => {
+            verify_stellar_payload(env, challenge, signature)?;
+            Ok(BindingType::Stellar)
+        }
+        OwnerSignature::Evm(signature) => {
+            verify_evm_payload(env, challenge, signature)?;
+            Ok(BindingType::Evm)
+        }
+    }
+}
+
 /// Verify a BLS signature against the aggregated public key.
 ///
 /// Notes:
@@ -186,7 +222,7 @@ pub fn verify_bls_key(
     let bls = env.crypto().bls12_381();
 
     // Read aggregated public key and domain separation tag used for verification.
-    let agg_pk: BytesN<96> = read_agg_bls_key(env).unwrap();
+    let agg_pk: BytesN<96> = read_agg_bls_key(env).ok_or(AccountError::RecoveryKeyNotFound)?;
     let dst: Bytes = read_dst_bytes(env);
 
     // Load the negative G1 generator used in the pairing equation.

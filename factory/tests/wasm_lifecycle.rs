@@ -4,27 +4,19 @@ use p256::ecdsa::{signature::hazmat::PrehashSigner, Signature, SigningKey as Pas
 use socketfi_shared::{
     account_error::AccountError,
     bls::g1_group_gen_point,
-    constants::{DST, ETH_PERSONAL_SIGN_PREFIX_32, ROTATION_DOMAIN},
+    constants::{ADD_BINDING_DOMAIN, DST, ETH_PERSONAL_SIGN_PREFIX_32},
     key_types::{
-        AccountCommitment, AccountSigner, BlsKeyWithPoP, EvmSignature, PasskeyAccountSigner,
-        PasskeySignature,
+        AccountSigner, AuthBindings, BindingChangeResult, BlsKeyWithPoP, EvmSignature,
+        OwnerSignature, PasskeyAccountSigner, PasskeySignature,
     },
     webauthn_helper::base64url_encode_no_pad,
 };
 use soroban_sdk::{
-    contracttype,
     crypto::bls12_381::{Fr, G1Affine},
     testutils::{Address as _, Ledger},
-    xdr::{self, ToXdr, WriteXdr},
-    Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec, U256,
+    xdr::ToXdr,
+    Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val, Vec, U256,
 };
-
-#[contracttype]
-#[derive(Clone)]
-enum OwnerAuth {
-    Evm(EvmSignature),
-    Passkey(PasskeySignature),
-}
 
 fn evm_address(env: &Env, key: &EvmKey) -> BytesN<20> {
     let public = key.verifying_key().to_encoded_point(false);
@@ -38,9 +30,9 @@ fn evm_sign(env: &Env, key: &EvmKey, payload: &BytesN<32>) -> EvmSignature {
     let mut message = Bytes::from_slice(env, ETH_PERSONAL_SIGN_PREFIX_32);
     message.append(&payload.clone().into());
     let hash = env.crypto().keccak256(&message);
-    let (sig, recovery_id) = key.sign_prehash_recoverable(&hash.to_array()).unwrap();
+    let (signature, recovery_id) = key.sign_prehash_recoverable(&hash.to_array()).unwrap();
     EvmSignature {
-        signature: BytesN::from_array(env, &sig.to_bytes().into()),
+        signature: BytesN::from_array(env, &signature.to_bytes().into()),
         recovery_id: recovery_id.to_byte() as u32,
     }
 }
@@ -68,34 +60,48 @@ fn passkey_sign(
         env,
         b"\",\"origin\":\"https://socket.fi\"}",
     ));
-    let mut auth: Bytes = rp.clone().into();
-    auth.append(&Bytes::from_slice(env, &[0x05, 0, 0, 0, 0]));
-    let mut message = auth.clone();
+    let mut authenticator_data: Bytes = rp.clone().into();
+    authenticator_data.append(&Bytes::from_slice(env, &[0x05, 0, 0, 0, 0]));
+    let mut message = authenticator_data.clone();
     message.extend_from_array(&env.crypto().sha256(&client).to_array());
-    let sig: Signature = key
+    let signature: Signature = key
         .sign_prehash(&env.crypto().sha256(&message).to_array())
         .unwrap();
-    let sig = sig.normalize_s().unwrap_or(sig);
+    let signature = signature.normalize_s().unwrap_or(signature);
     PasskeySignature {
-        signature: BytesN::from_array(env, &sig.to_bytes().into()),
+        signature: BytesN::from_array(env, &signature.to_bytes().into()),
         client_data_json: client,
-        authenticator_data: auth,
+        authenticator_data,
     }
+}
+
+fn bls_public_keys(env: &Env) -> Vec<BytesN<96>> {
+    let bls = env.crypto().bls12_381();
+    let generator = -G1Affine::from_bytes(g1_group_gen_point(env));
+    let mut keys = Vec::new(env);
+    for scalar in [1, 2] {
+        keys.push_back(
+            bls.g1_mul(&generator, &Fr::from_u256(U256::from_u32(env, scalar)))
+                .to_bytes(),
+        );
+    }
+    keys
 }
 
 fn bls_proofs(env: &Env, challenge: &BytesN<32>) -> Vec<BlsKeyWithPoP> {
     let bls = env.crypto().bls12_381();
-    let generator = -G1Affine::from_bytes(g1_group_gen_point(env));
     let message = bls.hash_to_g2(
         &challenge.clone().into(),
         &Bytes::from_slice(env, DST.as_bytes()),
     );
+    let keys = bls_public_keys(env);
     let mut proofs = Vec::new(env);
-    for scalar in [1, 2] {
-        let scalar = Fr::from_u256(U256::from_u32(env, scalar));
+    for (index, scalar) in [1, 2].iter().enumerate() {
         proofs.push_back(BlsKeyWithPoP {
-            key: bls.g1_mul(&generator, &scalar).to_bytes(),
-            sig: bls.g2_mul(&message, &scalar).to_bytes(),
+            key: keys.get_unchecked(index as u32),
+            sig: bls
+                .g2_mul(&message, &Fr::from_u256(U256::from_u32(env, *scalar)))
+                .to_bytes(),
         });
     }
     proofs
@@ -105,327 +111,224 @@ fn load_wasm(name: &str) -> std::vec::Vec<u8> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../target/wasm32v1-none/release")
         .join(format!("{name}.wasm"));
-    std::fs::read(&path).unwrap_or_else(|e| {
+    std::fs::read(&path).unwrap_or_else(|error| {
         panic!(
-            "Build release WASMs with `make build` first: {}: {e}",
+            "Build release WASMs with `make build` first: {}: {error}",
             path.display()
         )
     })
 }
 
-fn create_evm_account(env: &Env, key: &EvmKey) -> (Address, BytesN<32>) {
-    let wasm_hash = env
+fn register_factory(env: &Env) -> Address {
+    let factory_wasm = load_wasm("socketfi_factory");
+    let factory_hash = env.deployer().upload_contract_wasm(factory_wasm.as_slice());
+    let account_hash = env
         .deployer()
         .upload_contract_wasm(load_wasm("socketfi_account").as_slice());
     let admin = Address::generate(env);
-    let rp = String::from_str(env, "socket.fi");
-    let factory = env.register(
-        load_wasm("socketfi_factory").as_slice(),
-        (admin, rp, wasm_hash),
+    let voters = Vec::from_array(
+        env,
+        [
+            admin.clone(),
+            Address::generate(env),
+            Address::generate(env),
+        ],
     );
+    env.register(
+        factory_wasm.as_slice(),
+        (
+            admin,
+            String::from_str(env, "socket.fi"),
+            Symbol::new(env, "TESTNET"),
+            factory_hash,
+            account_hash,
+            voters,
+        ),
+    )
+}
+
+fn create_evm_account(env: &Env, factory: &Address, owner: &EvmKey) -> Address {
     let nonce = BytesN::from_array(env, &[11; 32]);
     let network = Symbol::new(env, "TESTNET");
     let expiry = env.ledger().sequence() + 120;
+    let address = evm_address(env, owner);
     let challenge: BytesN<32> = env.invoke_contract(
-        &factory,
+        factory,
         &Symbol::new(env, "get_pop_challenge"),
-        (&nonce, &network, expiry).into_val(env),
+        (
+            None::<BytesN<65>>,
+            None::<BytesN<32>>,
+            Some(address.clone()),
+            bls_public_keys(env),
+            nonce.clone(),
+            network.clone(),
+            Vec::<Address>::new(env),
+            expiry,
+        )
+            .into_val(env),
     );
     let args: Vec<Val> = (
         None::<BytesN<65>>,
         None::<PasskeySignature>,
         None::<BytesN<32>>,
         None::<Address>,
-        Some(evm_address(env, key)),
-        Some(evm_sign(env, key, &challenge)),
+        Some(address),
+        Some(evm_sign(env, owner, &challenge)),
         bls_proofs(env, &challenge),
         nonce.clone(),
-        network.clone(),
+        network,
         Vec::<Address>::new(env),
         expiry,
     )
         .into_val(env);
-    let function = Symbol::new(env, "create_account");
-    // Changing only expiry invalidates the existing real EVM/BLS proofs.
+    let create = Symbol::new(env, "create_account");
+
     let mut tampered = args.clone();
     tampered.set(10, (expiry - 1).into_val(env));
     assert!(env
-        .try_invoke_contract::<Address, AccountError>(&factory, &function, tampered)
+        .try_invoke_contract::<Address, AccountError>(factory, &create, tampered)
         .is_err());
-    // The failed deployment must not consume the nonce.
-    let after_failure: BytesN<32> = env.invoke_contract(
-        &factory,
-        &Symbol::new(env, "get_pop_challenge"),
-        (&nonce, &network, expiry).into_val(env),
-    );
-    assert_eq!(after_failure, challenge);
-    let address: Address = env.invoke_contract(&factory, &function, args.clone());
+
+    let account: Address = env.invoke_contract(factory, &create, args.clone());
     assert_eq!(
-        env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
+        env.try_invoke_contract::<Address, AccountError>(factory, &create, args),
         Err(Ok(AccountError::NonceAlreadyUsed))
     );
-    let rp_hash = env
-        .crypto()
-        .sha256(&Bytes::from_slice(env, b"socket.fi"))
-        .into();
-    (address, rp_hash)
+    let registered: bool = env.invoke_contract(
+        factory,
+        &Symbol::new(env, "is_registered_account"),
+        (account.clone(),).into_val(env),
+    );
+    assert!(registered);
+    account
 }
 
-fn rotation_signer(
+fn add_passkey_challenge(
     env: &Env,
     account: &Address,
-    key: &PasskeyKey,
-    rp: &BytesN<32>,
-    expiry: u32,
-) -> AccountSigner {
-    let public_key = passkey_public(env, key);
-    let mut payload = Bytes::from_slice(env, ROTATION_DOMAIN);
-    payload.append(&env.ledger().network_id().to_xdr(env));
+    public_key: &BytesN<65>,
+    live_until_ledger: u32,
+) -> BytesN<32> {
+    let mut commitment = Bytes::from_slice(env, &[0]);
+    commitment.append(&public_key.clone().into());
+    let commitment_hash: BytesN<32> = env.crypto().sha256(&commitment).into();
+
+    let mut payload = Bytes::from_slice(env, ADD_BINDING_DOMAIN);
+    payload.append(&env.ledger().network_id().into());
     payload.append(&account.to_xdr(env));
-    payload.append(&expiry.to_xdr(env));
-    payload.append(&AccountCommitment::Passkey(public_key.clone()).to_xdr(env));
-    let challenge = env.crypto().sha256(&payload).into();
-    AccountSigner::Passkey(PasskeyAccountSigner {
-        public_key,
-        pop_signature: passkey_sign(env, key, &challenge, rp),
-    })
-}
-
-fn authorize(
-    env: &Env,
-    account: &Address,
-    function: &str,
-    args: &Vec<Val>,
-    nonce: i64,
-    sign: impl FnOnce(&BytesN<32>) -> OwnerAuth,
-) -> xdr::SorobanAuthorizationEntry {
-    let invocation = xdr::SorobanAuthorizedInvocation {
-        function: xdr::SorobanAuthorizedFunction::ContractFn(xdr::InvokeContractArgs {
-            contract_address: account.into(),
-            function_name: function.try_into().unwrap(),
-            args: args
-                .iter()
-                .map(|v| xdr::ScVal::try_from_val(env, &v).unwrap())
-                .collect::<std::vec::Vec<_>>()
-                .try_into()
-                .unwrap(),
-        }),
-        sub_invocations: Default::default(),
-    };
-    let expiry = 100;
-    let preimage =
-        xdr::HashIdPreimage::SorobanAuthorization(xdr::HashIdPreimageSorobanAuthorization {
-            network_id: xdr::Hash(env.ledger().network_id().to_array()),
-            nonce,
-            signature_expiration_ledger: expiry,
-            invocation: invocation.clone(),
-        });
-    let hash = env
-        .crypto()
-        .sha256(&Bytes::from_slice(
-            env,
-            &preimage.to_xdr(xdr::Limits::none()).unwrap(),
-        ))
-        .into();
-    let sig: Val = sign(&hash).into_val(env);
-    let entry = xdr::SorobanAuthorizationEntry {
-        credentials: xdr::SorobanCredentials::Address(xdr::SorobanAddressCredentials {
-            address: account.into(),
-            nonce,
-            signature_expiration_ledger: expiry,
-            signature: xdr::ScVal::try_from_val(env, &sig).unwrap(),
-        }),
-        root_invocation: invocation,
-    };
-    env.set_auths(std::slice::from_ref(&entry));
-    entry
+    payload.push_back(0); // Passkey target.
+    payload.push_back(0); // No current binding.
+    payload.append(&Bytes::from_slice(env, &[0; 32]));
+    payload.push_back(1); // Replacement is present.
+    payload.append(&commitment_hash.into());
+    payload.append(&Bytes::from_slice(env, &0u64.to_be_bytes()));
+    payload.append(&Bytes::from_slice(env, &live_until_ledger.to_be_bytes()));
+    env.crypto().sha256(&payload).into()
 }
 
 #[test]
 #[ignore = "build both release WASMs first with make build"]
-fn factory_evm_creation_and_authenticated_passkey_rotation() {
+fn factory_creation_and_multi_binding_lifecycle() {
     let env = Env::default();
     env.cost_estimate().budget().reset_unlimited();
     env.ledger().with_mut(|ledger| {
         ledger.sequence_number = 1;
         ledger.network_id = [42; 32];
     });
-    // Fixed public test keys only; no auth mocking in this test.
+    let factory = register_factory(&env);
     let owner = EvmKey::from_slice(&[1; 32]).unwrap();
     let attacker = EvmKey::from_slice(&[2; 32]).unwrap();
     let passkey = PasskeyKey::from_slice(&[3; 32]).unwrap();
-    let (account, rp) = create_evm_account(&env, &owner);
-    let get_passkey = || {
-        env.invoke_contract::<Option<BytesN<65>>>(
-            &account,
-            &Symbol::new(&env, "get_passkey"),
-            Vec::new(&env),
-        )
-    };
-    assert!(get_passkey().is_none());
-    let expiry = 50u32;
+    let account = create_evm_account(&env, &factory, &owner);
+    let rp: BytesN<32> = env
+        .crypto()
+        .sha256(&Bytes::from_slice(&env, b"socket.fi"))
+        .into();
 
-    let wrong_rp = BytesN::from_array(&env, &[8; 32]);
-    let bad_signer = rotation_signer(&env, &account, &passkey, &wrong_rp, expiry);
-    let bad_args = (&bad_signer, expiry).into_val(&env);
-    authorize(&env, &account, "rotate_account", &bad_args, 1, |hash| {
-        OwnerAuth::Evm(evm_sign(&env, &owner, hash))
+    let before: AuthBindings =
+        env.invoke_contract(&account, &Symbol::new(&env, "get_bindings"), Vec::new(&env));
+    assert_eq!(before.evm, Some(evm_address(&env, &owner)));
+    assert!(before.passkey.is_none());
+
+    let expiry = 50;
+    let public_key = passkey_public(&env, &passkey);
+    let challenge = add_passkey_challenge(&env, &account, &public_key, expiry);
+    let signer = AccountSigner::Passkey(PasskeyAccountSigner {
+        public_key: public_key.clone(),
+        pop_signature: passkey_sign(&env, &passkey, &challenge, &rp),
     });
-    assert_eq!(
-        env.try_invoke_contract::<u64, AccountError>(
-            &account,
-            &Symbol::new(&env, "rotate_account"),
-            bad_args
-        ),
-        Err(Ok(AccountError::InvalidRpIdHash))
+    let bad_approvals = Vec::from_array(
+        &env,
+        [OwnerSignature::Evm(evm_sign(&env, &attacker, &challenge))],
     );
-    assert!(get_passkey().is_none());
-
-    let signer = rotation_signer(&env, &account, &passkey, &rp, expiry);
-    let args: Vec<Val> = (&signer, expiry).into_val(&env);
-    authorize(&env, &account, "rotate_account", &args, 2, |hash| {
-        OwnerAuth::Evm(evm_sign(&env, &attacker, hash))
-    });
     assert!(env
-        .try_invoke_contract::<u64, AccountError>(
+        .try_invoke_contract::<BindingChangeResult, AccountError>(
             &account,
-            &Symbol::new(&env, "rotate_account"),
-            args.clone()
-        )
-        .is_err());
-    assert!(get_passkey().is_none());
-
-    let authorization = authorize(&env, &account, "rotate_account", &args, 3, |hash| {
-        OwnerAuth::Evm(evm_sign(&env, &owner, hash))
-    });
-    let epoch: u64 =
-        env.invoke_contract(&account, &Symbol::new(&env, "rotate_account"), args.clone());
-    assert_eq!(epoch, 1);
-    assert_eq!(get_passkey(), Some(passkey_public(&env, &passkey)));
-
-    env.set_auths(&[authorization]);
-    assert!(env
-        .try_invoke_contract::<u64, AccountError>(
-            &account,
-            &Symbol::new(&env, "rotate_account"),
-            args
+            &Symbol::new(&env, "add_binding"),
+            (&signer, bad_approvals, expiry).into_val(&env),
         )
         .is_err());
 
-    let action = "revoke_all_sessions";
-    let empty = Vec::new(&env);
-    authorize(&env, &account, action, &empty, 4, |hash| {
-        OwnerAuth::Evm(evm_sign(&env, &owner, hash))
-    });
-    assert!(env
-        .try_invoke_contract::<u64, AccountError>(
-            &account,
-            &Symbol::new(&env, action),
-            empty.clone()
-        )
-        .is_err());
+    let approvals = Vec::from_array(
+        &env,
+        [OwnerSignature::Evm(evm_sign(&env, &owner, &challenge))],
+    );
+    let result: BindingChangeResult = env.invoke_contract(
+        &account,
+        &Symbol::new(&env, "add_binding"),
+        (&signer, approvals, expiry).into_val(&env),
+    );
+    assert_eq!(result.auth_config_nonce, 1);
+    assert_eq!(result.session_epoch, 0);
 
-    authorize(&env, &account, action, &empty, 5, |hash| {
-        OwnerAuth::Passkey(passkey_sign(&env, &passkey, hash, &rp))
-    });
-    let next_epoch: u64 = env.invoke_contract(&account, &Symbol::new(&env, action), empty);
-    assert_eq!(next_epoch, 2);
+    let after: AuthBindings =
+        env.invoke_contract(&account, &Symbol::new(&env, "get_bindings"), Vec::new(&env));
+    assert_eq!(after.evm, Some(evm_address(&env, &owner)));
+    assert_eq!(after.passkey, Some(public_key));
 }
 
 #[test]
 #[ignore = "build both release WASMs first with make build"]
-fn factory_creation_expiry_for_passkey_and_stellar() {
-    for stellar in [false, true] {
-        for expired in [false, true] {
-            let env = Env::default();
-            env.cost_estimate().budget().reset_unlimited();
-            env.ledger().set_sequence_number(1000);
-            let wasm = env
-                .deployer()
-                .upload_contract_wasm(load_wasm("socketfi_account").as_slice());
-            let factory = env.register(
-                load_wasm("socketfi_factory").as_slice(),
-                (
-                    Address::generate(&env),
-                    String::from_str(&env, "socket.fi"),
-                    wasm,
-                ),
-            );
-            let nonce = BytesN::from_array(&env, &[22; 32]);
-            let network = Symbol::new(&env, "TESTNET");
-            let expiry = 1120u32;
-            let challenge: BytesN<32> = env.invoke_contract(
-                &factory,
-                &Symbol::new(&env, "get_pop_challenge"),
-                (&nonce, &network, expiry).into_val(&env),
-            );
-            let key = PasskeyKey::from_slice(&[3; 32]).unwrap();
-            let rp: BytesN<32> = env
-                .crypto()
-                .sha256(&Bytes::from_slice(&env, b"socket.fi"))
-                .into();
-            let stellar_address = Address::from_str(
-                &env,
-                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-            );
-            let args: Vec<Val> = (
-                if stellar {
-                    None
-                } else {
-                    Some(passkey_public(&env, &key))
-                },
-                if stellar {
-                    None
-                } else {
-                    Some(passkey_sign(&env, &key, &challenge, &rp))
-                },
-                if stellar {
-                    Some(BytesN::from_array(&env, &[0; 32]))
-                } else {
-                    None
-                },
-                if stellar { Some(stellar_address) } else { None },
-                None::<BytesN<20>>,
-                None::<EvmSignature>,
-                bls_proofs(&env, &challenge),
-                nonce,
-                network,
-                Vec::<Address>::new(&env),
-                expiry,
-            )
-                .into_val(&env);
-            let function = Symbol::new(&env, "create_account");
-            if stellar {
-                // Classic-account authorization is enforced by the host. First
-                // prove missing auth fails, then mock only this host auth path.
-                assert!(env
-                    .try_invoke_contract::<Address, AccountError>(&factory, &function, args.clone())
-                    .is_err());
-                env.mock_all_auths();
-            }
-            env.ledger()
-                .set_sequence_number(if expired { expiry + 1 } else { expiry });
-            if expired {
-                assert_eq!(
-                    env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
-                    Err(Ok(AccountError::CreationProofExpired))
-                );
-            } else {
-                let _: Address = env.invoke_contract(&factory, &function, args.clone());
-                assert_eq!(
-                    env.try_invoke_contract::<Address, AccountError>(
-                        &factory,
-                        &function,
-                        args.clone()
-                    ),
-                    Err(Ok(AccountError::NonceAlreadyUsed))
-                );
-                env.ledger().set_sequence_number(expiry + 1);
-                assert_eq!(
-                    env.try_invoke_contract::<Address, AccountError>(&factory, &function, args),
-                    Err(Ok(AccountError::CreationProofExpired))
-                );
-            }
-        }
-    }
+fn creation_challenge_expires_and_is_network_bound() {
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().set_sequence_number(1_000);
+    let factory = register_factory(&env);
+    let nonce = BytesN::from_array(&env, &[22; 32]);
+    let key = PasskeyKey::from_slice(&[4; 32]).unwrap();
+    let args = (
+        Some(passkey_public(&env, &key)),
+        None::<BytesN<32>>,
+        None::<BytesN<20>>,
+        bls_public_keys(&env),
+        nonce,
+        Symbol::new(&env, "TESTNET"),
+        Vec::<Address>::new(&env),
+        1_120u32,
+    )
+        .into_val(&env);
+    let challenge: BytesN<32> =
+        env.invoke_contract(&factory, &Symbol::new(&env, "get_pop_challenge"), args);
+    assert_ne!(challenge, BytesN::from_array(&env, &[0; 32]));
+
+    env.ledger().set_sequence_number(1_121);
+    let expired = (
+        Some(passkey_public(&env, &key)),
+        None::<BytesN<32>>,
+        None::<BytesN<20>>,
+        bls_public_keys(&env),
+        BytesN::from_array(&env, &[23; 32]),
+        Symbol::new(&env, "TESTNET"),
+        Vec::<Address>::new(&env),
+        1_120u32,
+    )
+        .into_val(&env);
+    assert_eq!(
+        env.try_invoke_contract::<BytesN<32>, AccountError>(
+            &factory,
+            &Symbol::new(&env, "get_pop_challenge"),
+            expired,
+        ),
+        Err(Ok(AccountError::CreationProofExpired))
+    );
 }

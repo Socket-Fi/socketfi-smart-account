@@ -9,14 +9,17 @@ use crate::errors::UpgradeError;
 use crate::storage::{
     clear_pending_upgrade_state, get_upgrade_voting_deadline, read_account_wasm_version,
     read_future_wasm, read_proposal_type, write_account_wasm_version, write_future_wasm,
-    write_upgrade_voting_deadline, DataKey,
+    write_upgrade_voting_deadline, write_wasm_approved, DataKey,
 };
 use crate::types::UpgradeType;
-use crate::voters::{read_has_upgrade_passed, write_add_voter, write_remove_voter};
+use crate::voters::{
+    initialize_voters, read_has_upgrade_passed, require_voter_threshold, write_add_voter,
+    write_remove_voter,
+};
 
 use socketfi_shared::ttl::bump_persistent;
 use socketfi_shared::{constants::UPGRADE_VOTING_DURATION_SECONDS, events};
-use soroban_sdk::{Address, BytesN, Env, Map, String};
+use soroban_sdk::{Address, BytesN, Env, Map, String, Vec};
 use storage::{has_active_upgrade_proposal, write_proposal_snapshot};
 use voters::get_voter_info;
 
@@ -36,7 +39,7 @@ use voters::get_voter_info;
 // - AlreadyInitialized -> if account version has already been set.
 pub fn init_account_wasm_hash(e: &Env, account_version: &BytesN<32>) -> Result<(), UpgradeError> {
     if e.storage()
-        .persistent()
+        .instance()
         .get::<_, BytesN<32>>(&DataKey::AccountVersion)
         .is_some()
     {
@@ -44,7 +47,16 @@ pub fn init_account_wasm_hash(e: &Env, account_version: &BytesN<32>) -> Result<(
     }
 
     write_account_wasm_version(e, account_version);
+    write_wasm_approved(e, &UpgradeType::AccountVersion, account_version);
     Ok(())
+}
+
+pub fn init_factory_wasm_hash(e: &Env, wasm: &BytesN<32>) {
+    write_wasm_approved(e, &UpgradeType::Upgrade, wasm);
+}
+
+pub fn init_governance_voters(e: &Env, voters: &Vec<Address>) -> Result<(), UpgradeError> {
+    initialize_voters(e, voters)
 }
 
 // Creates a new upgrade proposal and snapshots governance state.
@@ -69,7 +81,11 @@ pub fn create_upgrade_proposal(
 
     let (_, approval_threshold, voters) = get_voter_info(e)?;
 
-    let deadline = e.ledger().timestamp() + UPGRADE_VOTING_DURATION_SECONDS;
+    let deadline = e
+        .ledger()
+        .timestamp()
+        .checked_add(UPGRADE_VOTING_DURATION_SECONDS)
+        .ok_or(UpgradeError::ArithmeticOverflow)?;
 
     write_proposal_snapshot(e, approval_threshold, &voters);
     write_upgrade_voting_deadline(e, &deadline);
@@ -104,7 +120,7 @@ pub fn write_cast_vote(
         return Err(UpgradeError::NoPendingUpgradeAction);
     }
 
-    if e.ledger().timestamp() > deadline {
+    if e.ledger().timestamp() >= deadline {
         return Err(UpgradeError::VotingClosed);
     }
 
@@ -166,7 +182,7 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
         return Err(UpgradeError::DidNotPass);
     }
 
-    match proposal_type {
+    match &proposal_type {
         UpgradeType::Upgrade => {
             clear_pending_upgrade_state(e);
             e.deployer()
@@ -187,6 +203,8 @@ pub fn execute_upgrade(e: &Env) -> Result<BytesN<32>, UpgradeError> {
             .publish(e);
         }
     }
+
+    write_wasm_approved(e, &proposal_type, &new_wasm_hash);
 
     Ok(new_wasm_hash)
 }
@@ -230,12 +248,17 @@ pub fn read_account_wasm_hash(e: &Env) -> Option<BytesN<32>> {
 // - Blocked while an upgrade proposal is active.
 // - Changes only affect future proposals because active proposals use
 //   their snapshotted voter set and threshold..
-pub fn upgrade_add_voter(e: &Env, voter: &Address) -> Result<(), UpgradeError> {
+pub fn upgrade_add_voter(
+    e: &Env,
+    voter: &Address,
+    approvals: &Vec<Address>,
+) -> Result<(), UpgradeError> {
     if has_active_upgrade_proposal(e) {
         return Err(UpgradeError::AnotherUpgradePending);
     }
 
-    write_add_voter(e, voter);
+    require_voter_threshold(e, approvals)?;
+    write_add_voter(e, voter)?;
     Ok(())
 }
 
@@ -245,11 +268,195 @@ pub fn upgrade_add_voter(e: &Env, voter: &Address) -> Result<(), UpgradeError> {
 // - Blocked while an upgrade proposal is active.
 // - Changes only affect future proposals because active proposals use
 //   their snapshotted voter set and threshold.
-pub fn upgrade_remove_voter(e: &Env, voter: &Address) -> Result<(), UpgradeError> {
+pub fn upgrade_remove_voter(
+    e: &Env,
+    voter: &Address,
+    approvals: &Vec<Address>,
+) -> Result<(), UpgradeError> {
     if has_active_upgrade_proposal(e) {
         return Err(UpgradeError::AnotherUpgradePending);
     }
 
-    write_remove_voter(e, voter);
+    require_voter_threshold(e, approvals)?;
+    write_remove_voter(e, voter)?;
     Ok(())
+}
+
+pub fn authorize_governance_action(e: &Env, approvals: &Vec<Address>) -> Result<(), UpgradeError> {
+    require_voter_threshold(e, approvals)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{
+        contract, contractimpl,
+        testutils::{Address as _, Ledger},
+        Address, BytesN, Env, String, Vec,
+    };
+
+    #[contract]
+    struct Host;
+    #[contractimpl]
+    impl Host {
+        pub fn ping() {}
+    }
+
+    fn setup() -> (Env, Address, Vec<Address>) {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000);
+        let host = env.register(Host, ());
+        let voters = Vec::from_array(
+            &env,
+            [
+                Address::generate(&env),
+                Address::generate(&env),
+                Address::generate(&env),
+                Address::generate(&env),
+            ],
+        );
+        env.as_contract(&host, || {
+            init_governance_voters(&env, &voters).unwrap();
+            init_account_wasm_hash(&env, &BytesN::from_array(&env, &[1; 32])).unwrap();
+            init_factory_wasm_hash(&env, &BytesN::from_array(&env, &[2; 32]));
+        });
+        (env, host, voters)
+    }
+
+    #[test]
+    fn voter_changes_require_threshold_and_preserve_minimum() {
+        let (env, host, voters) = setup();
+        let candidate = Address::generate(&env);
+        env.as_contract(&host, || {
+            assert_eq!(
+                upgrade_add_voter(
+                    &env,
+                    &candidate,
+                    &Vec::from_array(&env, [voters.get_unchecked(0), voters.get_unchecked(1)]),
+                ),
+                Err(UpgradeError::InvalidVoterApprovals)
+            );
+            upgrade_add_voter(
+                &env,
+                &candidate,
+                &Vec::from_array(
+                    &env,
+                    [
+                        voters.get_unchecked(0),
+                        voters.get_unchecked(1),
+                        voters.get_unchecked(2),
+                    ],
+                ),
+            )
+            .unwrap();
+        });
+        env.as_contract(&host, || {
+            assert_eq!(
+                upgrade_add_voter(
+                    &env,
+                    &candidate,
+                    &Vec::from_array(
+                        &env,
+                        [
+                            voters.get_unchecked(0),
+                            voters.get_unchecked(1),
+                            voters.get_unchecked(2),
+                            voters.get_unchecked(3),
+                        ],
+                    ),
+                ),
+                Err(UpgradeError::DuplicateVoter)
+            );
+        });
+        env.as_contract(&host, || {
+            let approvals = Vec::from_array(
+                &env,
+                [
+                    voters.get_unchecked(0),
+                    voters.get_unchecked(1),
+                    voters.get_unchecked(2),
+                    voters.get_unchecked(3),
+                ],
+            );
+            upgrade_remove_voter(&env, &candidate, &approvals).unwrap();
+        });
+        env.as_contract(&host, || {
+            let approvals = Vec::from_array(
+                &env,
+                [
+                    voters.get_unchecked(0),
+                    voters.get_unchecked(1),
+                    voters.get_unchecked(2),
+                    voters.get_unchecked(3),
+                ],
+            );
+            upgrade_remove_voter(&env, &voters.get_unchecked(3), &approvals).unwrap();
+        });
+        env.as_contract(&host, || {
+            let approvals = Vec::from_array(
+                &env,
+                [
+                    voters.get_unchecked(0),
+                    voters.get_unchecked(1),
+                    voters.get_unchecked(2),
+                ],
+            );
+            assert_eq!(
+                upgrade_remove_voter(&env, &voters.get_unchecked(2), &approvals),
+                Err(UpgradeError::MinimumVotersRequired)
+            );
+        });
+    }
+
+    #[test]
+    fn proposal_deadline_is_unambiguous_and_hashes_cannot_be_reapproved() {
+        let (env, host, voters) = setup();
+        let candidate = BytesN::from_array(&env, &[3; 32]);
+        env.as_contract(&host, || {
+            create_upgrade_proposal(&env, String::from_str(&env, "account"), &candidate).unwrap();
+            for index in 0..3 {
+                write_cast_vote(&env, &voters.get_unchecked(index), &candidate).unwrap();
+            }
+        });
+        env.ledger()
+            .set_timestamp(1_000 + UPGRADE_VOTING_DURATION_SECONDS);
+        env.as_contract(&host, || {
+            assert_eq!(
+                write_cast_vote(&env, &voters.get_unchecked(3), &candidate),
+                Err(UpgradeError::VotingClosed)
+            );
+            assert_eq!(execute_upgrade(&env), Ok(candidate.clone()));
+            assert_eq!(
+                create_upgrade_proposal(&env, String::from_str(&env, "account"), &candidate),
+                Err(UpgradeError::WasmAlreadyApproved)
+            );
+        });
+    }
+
+    #[test]
+    fn initialization_rejects_small_or_duplicate_voter_sets() {
+        let env = Env::default();
+        let host = env.register(Host, ());
+        let voter = Address::generate(&env);
+        env.as_contract(&host, || {
+            assert_eq!(
+                init_governance_voters(
+                    &env,
+                    &Vec::from_array(&env, [voter.clone(), Address::generate(&env)]),
+                ),
+                Err(UpgradeError::MinimumVotersRequired)
+            );
+            assert_eq!(
+                init_governance_voters(
+                    &env,
+                    &Vec::from_array(
+                        &env,
+                        [voter.clone(), voter.clone(), Address::generate(&env)]
+                    ),
+                ),
+                Err(UpgradeError::DuplicateVoter)
+            );
+        });
+    }
 }

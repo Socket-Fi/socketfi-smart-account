@@ -7,7 +7,9 @@ use socketfi_shared::{
     account_error::AccountError,
     bls::{g1_group_gen_point, is_g1_infinity},
     constants::{DST, ETH_PERSONAL_SIGN_PREFIX_32, MAX_BLS_KEYS, MIN_BLS_KEYS},
-    key_types::{extract_bls_keys, BlsKeyWithPoP, EvmSignature, PasskeySignature},
+    key_types::{
+        extract_bls_keys, BlsKeyWithPoP, EvmSignature, PasskeySignature, StellarSignature,
+    },
     webauthn_validation::validate_passkey_assertion_data,
 };
 
@@ -227,6 +229,7 @@ pub fn verify_evm_pop(
     if evm_signature.recovery_id > 1 {
         return Err(AccountError::InvalidEvmRecoveryId);
     }
+    validate_evm_signature_canonical(&evm_signature.signature)?;
 
     let mut message = Bytes::from_slice(env, ETH_PERSONAL_SIGN_PREFIX_32);
 
@@ -264,4 +267,78 @@ pub fn verify_evm_pop(
     }
 
     Ok(())
+}
+
+pub fn validate_evm_signature_canonical(signature: &BytesN<64>) -> Result<(), AccountError> {
+    // secp256k1 curve order divided by two. Ethereum signatures are canonical
+    // only when 1 <= s <= n/2.
+    const HALF_ORDER: [u8; 32] = [
+        0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b,
+        0x20, 0xa0,
+    ];
+    let mut nonzero = false;
+    let mut relation = core::cmp::Ordering::Equal;
+    for index in 0..32u32 {
+        let byte = signature
+            .get(index + 32)
+            .ok_or(AccountError::InvalidSignature)?;
+        nonzero |= byte != 0;
+        if relation == core::cmp::Ordering::Equal {
+            relation = byte.cmp(&HALF_ORDER[index as usize]);
+        }
+    }
+    if !nonzero || relation == core::cmp::Ordering::Greater {
+        return Err(AccountError::InvalidSignature);
+    }
+    Ok(())
+}
+
+pub fn verify_stellar_pop(
+    env: &Env,
+    challenge: BytesN<32>,
+    expected_public_key: BytesN<32>,
+    expected_address: Address,
+    signature: StellarSignature,
+) -> Result<(), AccountError> {
+    validate_stellar_address_key(&expected_address, &expected_public_key)?;
+    env.crypto().ed25519_verify(
+        &expected_public_key,
+        &challenge.into(),
+        &signature.signature,
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::*;
+
+    #[test]
+    fn evm_signature_requires_nonzero_low_s() {
+        let env = Env::default();
+        let mut valid = [0u8; 64];
+        valid[31] = 1;
+        valid[63] = 1;
+        assert_eq!(
+            validate_evm_signature_canonical(&BytesN::from_array(&env, &valid)),
+            Ok(())
+        );
+
+        let mut zero_s = valid;
+        zero_s[63] = 0;
+        assert_eq!(
+            validate_evm_signature_canonical(&BytesN::from_array(&env, &zero_s)),
+            Err(AccountError::InvalidSignature)
+        );
+
+        let mut high_s = valid;
+        for byte in &mut high_s[32..] {
+            *byte = 0xff;
+        }
+        assert_eq!(
+            validate_evm_signature_canonical(&BytesN::from_array(&env, &high_s)),
+            Err(AccountError::InvalidSignature)
+        );
+    }
 }

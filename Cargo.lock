@@ -1253,9 +1253,13 @@ dependencies = [
 name = "socketfi-account"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
+ "k256",
+ "p256",
  "socketfi-access",
  "socketfi-shared",
  "soroban-sdk",
+ "stellar-strkey 0.0.16",
 ]
 
 [[package]]

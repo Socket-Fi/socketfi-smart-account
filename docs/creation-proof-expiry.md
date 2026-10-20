@@ -1,45 +1,35 @@
-# Expiring account-creation proofs
+# V3 account-creation proofs
 
-This is a coordinated factory/API release, not an account migration.
-V1/V2 below refer only to internal proof formats, not contract product names. Do not
-point a V1 API at this factory or a V2 API at the previous factory.
+This is a coordinated account, factory, API, and SDK release. V3 proofs are not
+compatible with an older factory or client.
 
-- `get_pop_challenge(nonce, network, live_until_ledger)` adds a final u32.
-- `create_account(..., guardians, live_until_ledger)` adds the same final u32.
-- The SHA-256 domain is `SOCKETFI_CREATE_ACCOUNT_POP_V2`, followed by ScVal XDR
-  of actual network ID, factory address, network symbol, RP hash, nonce, expiry.
-- Validity is inclusive: current <= expiry <= current + 120, also bounded by
-  available storage TTL. No timestamp-to-ledger conversion is authoritative.
-- Expired proofs return 502; excessive expiry returns 503; consumed nonces
-  retain error 501. Existing error values and creation event fields are unchanged.
-- New nonce records use temporary storage and extend TTL through expiry. Network
-  minimum TTL can retain them longer. Failed creations roll back all changes.
-- Persistent legacy tombstones remain honored. Do not delete them, accept V1
-  signatures on V2, or add a fallback after failed V2 simulation.
+- `create_account(..., guardians, live_until_ledger)` keeps the signed expiry as
+  its final argument.
+- `get_pop_challenge` receives the proposed Passkey, Stellar, or EVM commitment,
+  ordered BLS public keys, nonce, network, guardians, and expiry.
+- The SHA-256 domain is `SOCKETFI_CREATE_ACCOUNT_POP_V3`.
+- The preimage commits to the actual ledger network ID, factory address, declared
+  network, trusted RP-ID hash, approved account WASM, selected owner commitment,
+  ordered BLS keys, ordered guardians, nonce, and expiry.
+- Validity is inclusive: `current <= expiry <= current + 120`, also bounded by
+  the available temporary-storage TTL.
+- A successful deployment writes a temporary nonce tombstone through expiry and
+  a keyed persistent canonical-account registry entry. Failed creation rolls back
+  both deployment and storage writes.
+- Legacy persistent nonce tombstones remain honored.
 
-## Deployment order
+## Release order
 
-1. Commit/review the factory and API changes. Run the verified release workflow
-   for that exact contract commit; verify attestations and use its exact WASMs.
-   Local `target/` WASMs are test builds, not the canonical Linux release.
-2. Upload matching account/factory artifacts and deploy a new Testnet factory
-   with the chosen admin and `socket.fi` RP ID. No deployment is part of this edit.
-3. In `socketfi-sdk/apps/api/soroban/contracts.js`, replace the TESTNET
-   `MASTER_CONTRACT` with the new factory ID and retain `CREATION_PROOF_VERSION: 2`.
-   The currently recorded CDKPBQ5... factory is V1 and must be replaced before
-   restarting this staged API. PUBLIC remains configured for V1.
-4. Rebuild/restart the API. Restart unfinished signup flows to obtain fresh
-   proofs; old sessions/cookies are not valid across a factory/version change.
-5. Verify all three signup methods and expiry/retry handling on Testnet.
-   Existing accounts, login tokens, account authorization, and events do not migrate.
+1. Update API and SDK encoders for the V3 factory constructor, creation challenge,
+   Stellar proof of possession, and targeted binding methods.
+2. Run formatting, strict Clippy, unit tests, release-WASM lifecycle tests, and
+   the reproducible release workflow for the exact reviewed commit.
+3. Deploy a new TESTNET factory with explicit TESTNET network configuration,
+   initial account and factory WASM hashes, and at least three unique voters
+   including the administrator.
+4. Update TESTNET API and indexer factory IDs and complete physical-device tests
+   for Passkey, Stellar, and EVM creation plus every binding-management path.
+5. Obtain an external security review before a PUBLIC deployment. Deploy PUBLIC
+   separately and never reuse challenges, configuration, or state across networks.
 
-REST request/response shapes stay unchanged. The API keeps factory/network,
-version, and exact expiry in the existing server session/native context or
-passkey creation cookie, and supplies it during contract submission. BLS nodes
-still sign opaque challenge bytes. App/SDK clients do not reconstruct that hash.
-Indexer event parsers require no change; any deployment-specific factory discovery
-configuration must be updated separately for the new factory.
-
-The older RP-ID release guide documents its original release; V2 supersedes its
-statement that factory creation inputs are unchanged. No other repository's
-checked-in WASM is replaced.
+No deployment or checked-in WASM replacement is performed by the source change.

@@ -16,6 +16,22 @@ pub enum DataKey {
     // Snapshot state
     ProposalApprovalThreshold,
     ProposalVoters,
+    ApprovedWasm(UpgradeType, BytesN<32>),
+}
+
+pub fn is_wasm_approved(e: &Env, proposal_type: &UpgradeType, wasm: &BytesN<32>) -> bool {
+    let key = DataKey::ApprovedWasm(proposal_type.clone(), wasm.clone());
+    let approved = e.storage().persistent().get(&key).unwrap_or(false);
+    if approved {
+        bump_persistent(e, &key);
+    }
+    approved
+}
+
+pub fn write_wasm_approved(e: &Env, proposal_type: &UpgradeType, wasm: &BytesN<32>) {
+    let key = DataKey::ApprovedWasm(proposal_type.clone(), wasm.clone());
+    e.storage().persistent().set(&key, &true);
+    bump_persistent(e, &key);
 }
 
 pub fn has_active_upgrade_proposal(e: &Env) -> bool {
@@ -53,6 +69,9 @@ pub fn write_future_wasm(
 ) -> Result<(), UpgradeError> {
     let proposal_type =
         UpgradeType::upgrade_type(proposal_type).ok_or(UpgradeError::UpgradeTypeNotFound)?;
+    if is_wasm_approved(e, &proposal_type, wasm) {
+        return Err(UpgradeError::WasmAlreadyApproved);
+    }
     bump_instance(e);
     e.storage().instance().set(&DataKey::FutureWASM, wasm);
     e.storage()

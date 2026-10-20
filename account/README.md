@@ -2,7 +2,7 @@
 
 The **Account Contract** is SocketFi's programmable smart account implementation for Soroban.
 
-It implements Soroban's native custom-account interface and supports multiple account signer types, scoped session authorization, guardian-assisted recovery, emergency protection, and owner-approved contract upgrades.
+It implements Soroban's native custom-account interface and supports multiple account signer types, scoped session authorization, targeted BLS recovery, guardian emergency protection, and owner-approved contract upgrades.
 
 ## Overview
 
@@ -24,13 +24,13 @@ The contract is responsible for:
 
 ### Multiple Account Signer Types
 
-An account is initialized with exactly one active signer:
+An account is initialized with exactly one signer and can later hold all three supported binding types:
 
 - **Passkey** — WebAuthn-compatible P-256 authentication
 - **Stellar** — Ed25519 authentication associated with a Stellar account
 - **EVM** — secp256k1 authentication associated with a 20-byte EVM address
 
-Signer-specific proofs of possession are verified before a signer is installed. Rotation and recovery atomically remove the previous active signer and install exactly one replacement signer.
+Signer-specific proofs of possession are verified before installation. Each type has one slot; binding changes replace only their target slot and never clear unrelated bindings.
 
 ### Passkey Authentication
 
@@ -77,7 +77,7 @@ Signer rotation and account recovery increment the session epoch so that session
 
 Session creation and revocation events can be indexed off-chain to provide account history, pagination, and session-management interfaces. Contract storage remains authoritative for authorization.
 
-### Guardian Recovery
+### BLS Recovery
 
 - Aggregate BLS recovery authorization
 - Recovery without access to the current account signer
@@ -141,7 +141,7 @@ During initialization, the contract:
 10. Starts the account in the unpaused state.
 11. Extends the instance-storage TTL.
 
-Only one active account signer is installed at a time.
+Creation installs exactly one signer. After creation the account may contain one Passkey, one Stellar signer, and one EVM signer concurrently.
 
 ## Authentication
 
@@ -184,37 +184,26 @@ Sensitive account-management functions—including signer rotation, session admi
 
 ## Account Lifecycle
 
-### `rotate_account`
+### `add_binding`, `rotate_binding`, and `remove_binding`
 
-Replaces the current active signer under authorization from the account.
+Adds an empty signer slot, rotates one slot to a same-type replacement, or removes a self-authorized slot while preserving at least one owner.
 
-The function:
-
-- Requires account authorization
-- Validates the replacement `AccountSigner`
-- Verifies proof of possession of the replacement signer
-- Clears every existing active signer
-- Installs exactly one replacement signer
-- Increments the session epoch
-- Emits a rotation event
+The functions verify explicit, domain-separated owner signatures. Addition
+requires every current binding; rotation requires the target binding; removal
+requires the binding being removed and rejects removal of the final binding.
+Every candidate proves possession. Rotation and removal invalidate sessions;
+addition preserves them.
 
 Rotation preserves recovery configuration such as the RP ID hash, aggregated BLS key, factory address, and guardian set.
 
-### `recover_account`
+### `recover_binding_with_bindings` and `recover_binding_bls`
 
-Replaces the active signer through the BLS recovery authority.
+Replaces one inaccessible binding through the other two owner types or the independent BLS recovery authority.
 
-The function:
-
-- Builds a domain-separated recovery challenge
-- Binds the authorization to the account, replacement signer, and expiration ledger
-- Verifies the aggregate BLS recovery signature
-- Verifies proof of possession of the replacement signer
-- Atomically clears and replaces the active signer
-- Increments the session epoch
-- Emits a recovery event
-
-Recovery intentionally does not require authorization from the current account signer.
+Peer recovery is available only when all three binding slots are populated and
+requires the other two types. BLS recovery requires the aggregate BLS recovery
+signature. Both verify replacement proof of possession, replace only the target,
+consume the account configuration nonce, and invalidate all sessions.
 
 ### `pause`
 
@@ -369,7 +358,7 @@ Events support indexing and observability but do not replace contract-state vali
 
 The Account Contract provides layered protection:
 
-- Mutually exclusive active account signer
+- Up to three concurrent owner bindings, one per supported type
 - Signer proof-of-possession verification
 - Domain-separated rotation and recovery challenges
 - Authorization-context validation
@@ -390,7 +379,7 @@ The Account Contract provides layered protection:
 flowchart TD
     F["Account Factory"] -->|deploys and registers| A["Account Contract"]
     F -->|publishes approved WASM| A
-    O["Active Account Signer"] -->|authorizes operations and upgrades| A
+    O["Active Owner Bindings"] -->|authorize operations and upgrades| A
     G["BLS Recovery Authority"] -->|authorizes recovery| A
     S["Session Delegates"] -->|policy-restricted authorization| A
 ```
@@ -400,10 +389,10 @@ flowchart TD
 - Account-first terminology
 - Soroban-native account abstraction
 - Multiple authentication methods
-- Exactly one active owner signer at a time
+- At least one and at most one owner binding of each supported type
 - Multiple concurrent scoped sessions
 - Self-custodial account-authorized upgrades
-- Guardian-assisted recovery
+- Targeted aggregate-BLS recovery
 - Explicit separation between owner, session, guardian, and factory authority
 - Atomic state transitions
 - Indexer-assisted discovery with on-chain authorization
@@ -414,7 +403,7 @@ flowchart TD
 - Account deployment is handled by the Account Factory.
 - An account stores the factory address used for approved implementation discovery.
 - A factory address stored by an account is not, by itself, proof of official deployment; integrations should also verify the factory registry.
-- Recovery does not require the previous account signer.
+- Recovery does not require the target binding and preserves every unrelated binding.
 - The RP ID hash is retained during signer rotation and recovery so that a passkey can be installed later.
 - Creating a new session does not cancel existing sessions.
 - Rotation and recovery globally invalidate earlier sessions by incrementing the session epoch.

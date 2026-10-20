@@ -8,17 +8,21 @@ pub trait AccountFactory {
     fn get_latest_account_wasm(e: Env) -> BytesN<32>;
 }
 
-pub fn read_migration_required(env: &Env) -> (bool, Option<BytesN<32>>) {
-    let installed_wasm: BytesN<32> = read_installed_wasm_hash(env).unwrap();
+pub fn read_migration_required(
+    env: &Env,
+) -> Result<(bool, Option<BytesN<32>>), socketfi_shared::account_error::AccountError> {
+    use socketfi_shared::account_error::AccountError;
+    let installed_wasm: BytesN<32> =
+        read_installed_wasm_hash(env).ok_or(AccountError::AccountVersionNotFound)?;
 
-    let factory = read_factory(env).unwrap();
+    let factory = read_factory(env).ok_or(AccountError::InvalidConfig)?;
 
     let latest_wasm: BytesN<32> =
         AccountFactoryClient::new(env, &factory).get_latest_account_wasm();
 
     if installed_wasm == latest_wasm {
-        (false, None)
+        Ok((false, None))
     } else {
-        (true, Some(latest_wasm))
+        Ok((true, Some(latest_wasm)))
     }
 }

@@ -11,8 +11,10 @@
 ## 1. Overview
 
 SocketFi is a modular smart account protocol built on Soroban (Stellar). It
-provides self-custodial accounts with mutually exclusive owner authentication
-through a passkey, a Stellar Ed25519 signer, or an EVM secp256k1 signer.
+provides self-custodial accounts with up to three concurrent owner bindings:
+one passkey, one Stellar Ed25519 signer, and one EVM secp256k1 signer. Accounts
+start with exactly one binding and can add the other types under explicit
+multi-binding authorization.
 
 Accounts can delegate constrained authority to multiple concurrent sessions.
 Recovery is authorized by a configured aggregate BLS recovery key backed by
@@ -41,8 +43,9 @@ The protocol contains four principal packages:
 
 ### Owner authentication
 
-Only the currently configured owner signer may authorize unrestricted account
-operations. Authentication mechanisms must not be confused with one another.
+Only a currently configured owner binding may authorize unrestricted account
+operations. Authentication mechanisms must not be confused with one another,
+and one binding cannot rotate, remove, or recover a different binding alone.
 
 ### Delegated authorization
 
@@ -51,9 +54,10 @@ usage count, and lifetime explicitly granted by its policy.
 
 ### Recovery
 
-Recovery must require a valid aggregate BLS authorization and valid proof of
-possession from the replacement signer. Recovery must invalidate all previously
-issued sessions.
+Recovery must require either a valid aggregate BLS authorization or, when all
+three bindings exist, approval from both non-target bindings. The replacement
+must prove possession, unrelated bindings must remain unchanged, and recovery
+must invalidate all previously issued sessions.
 
 ### Integrity
 
@@ -103,7 +107,7 @@ flowchart TD
 | -------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Owner authentication | Active signer type; passkey; RP ID hash; Stellar public key; EVM address; authentication signatures         |
 | Sessions             | Policy ID; delegate key; session epoch; allowlist; spend and usage limits; expiry; session signatures       |
-| Recovery             | Aggregate BLS public key; guardian BLS proofs of possession; recovery signatures; recovery challenge/domain |
+| Recovery             | Aggregate BLS public key; BLS proofs of possession; recovery signatures; recovery challenge/domain          |
 | Guardian controls    | Guardian set; removal schedule; pause state; unpause approval                                               |
 | Account state        | Assets; factory address; initialization state; installed WASM/version; storage TTL                          |
 | Factory              | Creation nonce; canonical account registry; approved Account WASM hash and version                          |
@@ -151,8 +155,8 @@ contract interface as authoritative.
 
 - `__constructor`
 - `__check_auth`
-- Owner signer rotation
-- `recover_account`
+- Targeted binding add, same-type rotation, and self-removal
+- Two-binding peer recovery and targeted BLS recovery
 - Session creation, use, individual revocation, and global revocation
 - Guardian addition and delayed removal
 - Pause, approve-unpause, and unpause
@@ -179,7 +183,7 @@ or migration logic affect every caller.
 | S6  | Spoofing               | Forged aggregate BLS recovery signature                                                   | Account takeover                      | Critical | Aggregate verification, POP validation, domain separation                                        |
 | S7  | Spoofing               | Unauthorized guardian, admin, or governance voter                                         | Pause abuse or malicious upgrades     | Critical | `require_auth`, canonical stored identities, bounded voter/guardian sets                         |
 | T1  | Tampering              | Owner signer changed without current-owner authorization or recovery proof                | Account takeover                      | Critical | Authorized rotation, replacement POP, atomic signer replacement                                  |
-| T2  | Tampering              | More than one owner signer remains active                                                 | Ambiguous or unintended authority     | Critical | Clear all active signers, install exactly one, invariant tests                                   |
+| T2  | Tampering              | A binding changes another slot or duplicate same-type bindings exist                      | Unauthorized authority change         | Critical | Fixed type slots, exact approval sets, targeted replacement, invariant tests                     |
 | T3  | Tampering              | Session policy arguments, counters, epoch, or expiry bypassed                             | Excess delegated spending/authority   | Critical | Canonical policy hashing, context validation, checked accounting                                 |
 | T4  | Tampering              | Guardian set or aggregate key becomes inconsistent                                        | Recovery loss or takeover             | Critical | Atomic guardian/key update, duplicate rejection, POP revalidation                                |
 | T5  | Tampering              | Account initialization or creation challenge replay                                       | Duplicate/invalid deployment state    | High     | One-time constructor, nonce/challenge consumption, factory registry                              |
@@ -191,7 +195,7 @@ or migration logic affect every caller.
 | I1  | Information disclosure | Public guardian/session metadata reveals relationships or usage                           | Privacy loss, targeting               | Medium   | Minimize event fields; avoid emitting unnecessary personal metadata                              |
 | I2  | Information disclosure | WebAuthn client data or authenticator data leaks more than required                       | Privacy/fingerprinting                | Low      | Store only required verification state; avoid logging assertions                                 |
 | D1  | Denial of service      | Malicious or compromised guardian pauses account                                          | Temporary loss of use                 | High     | Explicit unpause/recovery path, monitored guardian actions                                       |
-| D2  | Denial of service      | Guardian removal or recovery configuration abuse                                          | Recovery unavailable                  | High     | Delayed removal, limits, owner auth, atomic key recomputation                                    |
+| D2  | Denial of service      | Guardian removal or BLS recovery configuration abuse                                      | Protection or recovery unavailable    | High     | Delayed removal, bounded sets, owner auth, atomic state changes                                  |
 | D3  | Denial of service      | Instance or temporary storage expires                                                     | Account/session unavailable           | High     | One instance TTL bump per successful external path; policy-specific TTL                          |
 | D4  | Denial of service      | Unbounded inputs, contexts, guardians, or policies exhaust resources                      | Invocation failure/cost increase      | High     | Strict maximum lengths, bounded loops and batch sizes                                            |
 | D5  | Denial of service      | Governance prevents or forces security upgrade availability                               | Accounts remain vulnerable            | High     | Timelock/quorum, transparent proposals, owner choice, emergency plan                             |
@@ -258,8 +262,8 @@ Authorization must verify:
 Session policy configuration must never permit sensitive account-administration
 functions, even if a caller attempts to include them in an allowlist.
 
-Individual revocation removes the selected policy. Global revocation,
-owner-signer rotation, and recovery increment the session epoch so old sessions
+Individual revocation removes the selected policy. Global revocation, binding
+rotation/removal/recovery, and migration increment the session epoch so old sessions
 become invalid without iterating over them.
 
 Temporary session storage may expire automatically. An indexer can enumerate
@@ -276,23 +280,24 @@ bind at least:
 
 - Soroban network
 - Account address
-- Recovery operation
-- Current recovery nonce or non-replayable challenge
+- Target binding type and existing commitment
+- Exact recovery operation and network
+- Current authentication-configuration nonce and bounded expiry
 - Replacement signer type and key/address
-- Any new RP ID hash
 
 After all recovery authorization and replacement POP checks succeed, the
-contract clears every active owner signer and installs exactly one replacement.
-Soroban atomicity must ensure that a failure cannot leave the account without a
-signer or with multiple signers.
+contract replaces only the target binding. Every unrelated binding, RP-ID hash,
+guardian set, and aggregate BLS key remains unchanged. Soroban atomicity must
+ensure that a failure cannot remove the previous target or partially install its
+replacement.
 
 Recovery must invalidate all prior sessions. Whether recovery also changes the
 guardian set or aggregate BLS key must be explicit; unchanged recovery
 configuration should be documented and tested.
 
-Guardian pause, unpause approval, delayed removal, and aggregate-key updates
-must have clearly separated authorization rules. A guardian who may pause
-should not automatically gain unrestricted recovery or upgrade authority.
+Guardian pause, unpause approval, and delayed removal must remain separate from
+BLS recovery authorization. A guardian who may pause does not automatically
+gain recovery or upgrade authority.
 
 ---
 
@@ -405,10 +410,10 @@ Audit:
 The following properties must hold for every reachable state:
 
 1. Account initialization succeeds at most once.
-2. Exactly one owner signer type is active after initialization, rotation, or
-   recovery.
-3. RP ID state exists only when required by the active passkey design and is
-   updated consistently during signer replacement.
+2. One to three owner bindings are active, with at most one binding per type and
+   at least one binding at all times.
+3. RP ID state is account-level configuration, persists independently of the
+   current bindings, and is reused when a Passkey is later added or recovered.
 4. Unrestricted execution requires valid current-owner authentication.
 5. Every auth mechanism verifies the exact Soroban signature payload under its
    own explicit domain and encoding.
@@ -418,10 +423,10 @@ The following properties must hold for every reachable state:
    amount, spend, usage, epoch, or expiry constraint.
 8. Creating a new session does not revoke existing sessions.
 9. Individual revocation affects only the selected session.
-10. Global revocation, signer rotation, and recovery invalidate all prior
-    sessions through an epoch change.
-11. Recovery requires a valid aggregate BLS authorization and valid
-    replacement-signer POP.
+10. Global revocation, binding rotation/removal/recovery, and migration
+    invalidate all prior sessions through an epoch change.
+11. Recovery replaces one binding only and requires either the other two owner
+    types or valid aggregate BLS authorization, plus replacement-signer POP.
 12. Duplicate guardians and invalid/duplicate BLS keys cannot be configured.
 13. Guardian count and all caller-controlled vectors remain within fixed
     protocol limits.
@@ -616,9 +621,9 @@ socketfi/
 
 ## 22. Conclusion
 
-SocketFi combines Soroban-native account abstraction with mutually exclusive
-passkey, Stellar, or EVM owner authentication; constrained concurrent sessions;
-guardian-backed aggregate BLS recovery; emergency controls; deterministic
+SocketFi combines Soroban-native account abstraction with concurrent Passkey,
+Stellar, and EVM owner bindings; constrained concurrent sessions; targeted
+peer or aggregate-BLS recovery; guardian emergency controls; deterministic
 Factory deployment; and owner-authorized adoption of approved upgrades.
 
 The protocol’s strongest security boundary is the separation of unrestricted

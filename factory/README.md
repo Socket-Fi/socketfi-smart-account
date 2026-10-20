@@ -122,11 +122,14 @@ An Account merely storing the official Factory address is not sufficient proof o
 
 Initializes the Factory exactly once.
 
-Typical parameters:
+Parameters:
 
 - `admin: Address`
 - `rpid: String`
-- `wasm: BytesN<32>`
+- `network: Symbol` (`TESTNET` or `PUBLIC`)
+- `factory_wasm: BytesN<32>`
+- `account_wasm: BytesN<32>`
+- `voters: Vec<Address>` (at least three unique voters, including `admin`)
 
 Initialization:
 
@@ -135,7 +138,7 @@ Initialization:
 - Derives and stores the RP ID hash
 - Stores the initial approved Account WASM hash
 - Initializes the approved Account version
-- Registers the initial governance voter
+- Registers the initial governance voter set
 - Initializes governance and replay-protection state
 
 The deployed WASM hash must refer to uploaded Soroban contract code compatible with the Account constructor expected by this Factory version.
@@ -156,7 +159,7 @@ The exact parameters depend on the enabled owner-authentication configuration. A
 - `nonce: BytesN<32>`
 - `network: Symbol`
 - `guardians: Vec<Address>`
-- `live_until_ledger: u32` (V2: final argument, signed expiry)
+- `live_until_ledger: u32` (V3: final argument, signed expiry)
 
 Multi-auth versions may additionally accept an optional Stellar signer, an optional EVM signer, and the corresponding proof of possession.
 
@@ -187,10 +190,10 @@ All state changes occur in one Soroban transaction and are atomic.
 
 Returns the deterministic challenge that must be signed to prove control of the proposed owner credential and guardian keys.
 
-V2 takes `(nonce, network, live_until_ledger)`. Its exact SHA-256 preimage is:
+V3 takes the complete proposed configuration plus `(nonce, network, live_until_ledger)`. Its SHA-256 preimage begins with:
 
 ```text
-raw("SOCKETFI_CREATE_ACCOUNT_POP_V2")
+raw("SOCKETFI_CREATE_ACCOUNT_POP_V3")
 || XDR(actual ledger network ID)
 || XDR(factory address)
 || XDR(network symbol)
@@ -206,9 +209,9 @@ Temporary replay records remain live through that ledger, then may be deleted;
 the expired proof is rejected even when its nonce entry is gone. Existing legacy
 persistent nonce records are still checked and are not deleted by this change.
 
-The challenge does not serialize the complete owner/guardian configuration.
-Existing signer proof-of-possession and guardian/BLS validation still apply;
-this expiry change is not a full creation-configuration commitment redesign.
+The challenge serializes the selected owner commitment, ordered BLS keys,
+ordered guardians, approved account WASM, RP-ID hash, nonce, network, and expiry.
+Changing any committed field invalidates every owner and BLS proof.
 
 See [the rollout guide](../docs/creation-proof-expiry.md).
 
@@ -517,11 +520,15 @@ MIT
 
 Creation always passes `Some(factory_rpid_hash)` to the account constructor,
 including EVM and Stellar ownership. The hash remains factory-controlled and
-the RP configuration itself adds no account-constructor argument. V2 separately
-adds a signed expiry to the factory creation inputs. Missing factory RP configuration
-fails closed. Signer selection and Stellar authorization are unchanged.
+the RP configuration itself adds no account-constructor argument. The V3
+creation intent binds the signed expiry, declared and actual networks, approved
+Account WASM, RP-ID hash, selected initial signer, ordered BLS recovery keys,
+ordered guardians, nonce, and Factory address. Missing RP configuration fails
+closed. Creation accepts exactly one initial binding; additional bindings are
+managed by the deployed Account.
 
-The matching account implementation must accept RP configuration independently
-of passkey presence. Roll out the factory logic and matching account WASM as a
-coordinated release; mixed old/new versions reject non-passkey creation. Do not
-resume creation until both versions are active. Existing accounts are unaffected.
+The matching Account implementation must accept RP configuration independently
+of passkey presence and expose the multi-binding ABI. Roll out the Factory and
+Account WASMs as one coordinated release. Old clients cannot safely construct
+V3 challenges, and existing accounts require an explicitly authorized migration
+before using the new binding methods.

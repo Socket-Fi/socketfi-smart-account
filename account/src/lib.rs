@@ -20,3 +20,6 @@ mod validation;
 
 #[cfg(test)]
 mod rpid_tests;
+
+#[cfg(test)]
+mod binding_tests;

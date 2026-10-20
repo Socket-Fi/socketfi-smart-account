@@ -108,13 +108,17 @@ pub fn write_guardian_infos(env: &Env, guardians: Vec<GuardianInfo>) {
         .set(&DataKey::Guardians, &guardians);
 }
 
-pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {
+pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<u32, AccountError> {
     if is_paused(env) {
         return Err(AccountError::AccountPaused);
     }
 
     let mut guardians = read_guardians(env);
-    let removal_time = env.ledger().sequence() + GUARDIAN_REMOVAL_DELAY_LEDGERS;
+    let removal_time = env
+        .ledger()
+        .sequence()
+        .checked_add(GUARDIAN_REMOVAL_DELAY_LEDGERS)
+        .ok_or(AccountError::ArithmeticOverflow)?;
 
     for i in 0..guardians.len() {
         let mut g = guardians.get(i).unwrap();
@@ -127,14 +131,14 @@ pub fn schedule_remove_guardian(env: &Env, guardian: Address) -> Result<(), Acco
             g.removal_time = Some(removal_time);
             guardians.set(i, g);
             write_guardian_infos(env, guardians);
-            return Ok(());
+            return Ok(removal_time);
         }
     }
 
     Err(AccountError::GuardianNotFound)
 }
 
-pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {
+pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<bool, AccountError> {
     let mut guardians = read_guardians(env);
     let now = env.ledger().sequence();
 
@@ -157,11 +161,11 @@ pub fn finalize_remove_guardian(env: &Env, guardian: Address) -> Result<(), Acco
         guardians.remove(i);
         write_guardian_infos(env, guardians);
 
-        return Ok(());
+        return Ok(true);
     }
 
     // Already removed (or never existed).
-    Ok(())
+    Ok(false)
 }
 
 pub fn add_new_guardian(env: &Env, guardian: Address) -> Result<(), AccountError> {

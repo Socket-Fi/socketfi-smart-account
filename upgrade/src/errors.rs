@@ -16,4 +16,11 @@ pub enum UpgradeError {
     DidNotPass = 1027,
     NotEnoughVoters = 1037,
     NotFound = 1047,
+    InvalidNetwork = 1048,
+    DuplicateVoter = 1049,
+    MinimumVotersRequired = 1050,
+    InvalidVoterApprovals = 1051,
+    WasmAlreadyApproved = 1052,
+    ArithmeticOverflow = 1053,
+    AdminMustBeVoter = 1054,
 }

@@ -15,6 +15,7 @@ pub enum DataKey {
     Passkey,
     StellarSigner,
     EvmSigner,
+    AuthConfigNonce,
     Nonce,
     RpidHash,
     // This name is serialized on-chain; changing it would change the storage key.
@@ -127,6 +128,29 @@ pub fn read_evm_signer(env: &Env) -> Option<BytesN<20>> {
     env.storage().instance().get(&DataKey::EvmSigner)
 }
 
+pub fn read_auth_config_nonce(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::AuthConfigNonce)
+        .unwrap_or(0)
+}
+
+pub fn increment_auth_config_nonce(env: &Env) -> Result<u64, AccountError> {
+    let next = read_auth_config_nonce(env)
+        .checked_add(1)
+        .ok_or(AccountError::ArithmeticOverflow)?;
+    env.storage()
+        .instance()
+        .set(&DataKey::AuthConfigNonce, &next);
+    Ok(next)
+}
+
+pub fn write_auth_config_nonce(env: &Env, nonce: u64) {
+    env.storage()
+        .instance()
+        .set(&DataKey::AuthConfigNonce, &nonce);
+}
+
 // -----------------------------------------------------------------------------
 // SocketFi Factory
 // -----------------------------------------------------------------------------
@@ -163,6 +187,7 @@ pub fn read_installed_wasm_hash(env: &Env) -> Option<BytesN<32>> {
 /// account-level RP configuration rather than active-signer state.
 ///
 /// Removing a missing instance-storage key is safe and does not error.
+#[cfg(test)]
 pub fn clear_active_signers(env: &Env) {
     let storage = env.storage().instance();
 

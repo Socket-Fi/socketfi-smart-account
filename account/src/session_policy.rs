@@ -13,6 +13,7 @@ use socketfi_shared::{
         MAX_SESSION_LIFETIME_LEDGERS, MAX_SPEND_LIMITS, SESSION_ID_DOMAIN, SESSION_POP_DOMAIN,
         SESSION_VERSION, TRANSFER_FN,
     },
+    events,
     key_types::{EvmSignature, PasskeySignature, StellarSignature},
 };
 
@@ -153,6 +154,7 @@ fn write_session(env: &Env, policy: &SessionPolicy) {
 
 pub fn derive_policy_id(env: &Env, input: &SessionPolicyInput) -> BytesN<32> {
     let mut payload = Bytes::from_slice(env, SESSION_ID_DOMAIN);
+    payload.append(&env.ledger().network_id().to_xdr(env));
     payload.append(&env.current_contract_address().to_xdr(env));
     payload.append(&input.to_xdr(env));
     env.crypto().sha256(&payload).into()
@@ -160,6 +162,7 @@ pub fn derive_policy_id(env: &Env, input: &SessionPolicyInput) -> BytesN<32> {
 
 pub fn build_delegate_pop_challenge(env: &Env, input: &SessionPolicyInput) -> BytesN<32> {
     let mut payload = Bytes::from_slice(env, SESSION_POP_DOMAIN);
+    payload.append(&env.ledger().network_id().to_xdr(env));
     payload.append(&env.current_contract_address().to_xdr(env));
     payload.append(&input.to_xdr(env));
     env.crypto().sha256(&payload).into()
@@ -386,16 +389,14 @@ pub fn create_session_policy(
     };
 
     write_session(env, &policy);
-
-    // env.events().publish(
-    //     (symbol_short!("sess_new"), policy_id.clone()),
-    //     (
-    //         policy.delegate,
-    //         policy.valid_after_ledger,
-    //         policy.expires_at_ledger,
-    //         policy.max_uses,
-    //     ),
-    // );
+    events::SessionCreatedEvent {
+        policy_id: policy_id.clone(),
+        delegate: policy.delegate,
+        valid_after_ledger: policy.valid_after_ledger,
+        expires_at_ledger: policy.expires_at_ledger,
+        epoch: policy.epoch,
+    }
+    .publish(env);
 
     Ok(policy_id)
 }

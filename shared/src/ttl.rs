@@ -29,9 +29,8 @@ use crate::constants::DAY_IN_LEDGERS;
 pub fn bump_instance(e: &Env) {
     let max_ttl = e.storage().max_ttl();
 
-    e.storage()
-        .instance()
-        .extend_ttl(max_ttl - DAY_IN_LEDGERS, max_ttl);
+    let threshold = max_ttl.saturating_sub(DAY_IN_LEDGERS);
+    e.storage().instance().extend_ttl(threshold, max_ttl);
 }
 
 // -----------------------------------------------------------------------------
@@ -66,7 +65,6 @@ where
 {
     let max_ttl = e.storage().max_ttl();
 
-    e.storage()
-        .persistent()
-        .extend_ttl(key, max_ttl - DAY_IN_LEDGERS, max_ttl);
+    let threshold = max_ttl.saturating_sub(DAY_IN_LEDGERS);
+    e.storage().persistent().extend_ttl(key, threshold, max_ttl);
 }

@@ -16,3 +16,7 @@ socketfi-access = { path = "../access" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+p256 = { workspace = true }
+k256 = { workspace = true }
+ed25519-dalek = { workspace = true }
+stellar-strkey = { workspace = true }

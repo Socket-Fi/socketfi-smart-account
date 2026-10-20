@@ -11,7 +11,10 @@ pub trait FactoryTrait {
         e: Env,
         admin: Address,
         rpid: String,
-        wasm: BytesN<32>,
+        network: Symbol,
+        factory_wasm: BytesN<32>,
+        account_wasm: BytesN<32>,
+        voters: Vec<Address>,
     ) -> Result<(), UpgradeError>;
 
     // account creation
@@ -35,7 +38,11 @@ pub trait FactoryTrait {
     ) -> Result<Address, AccountError>;
 
     // Update admin.
-    fn update_admin(e: Env, new_admin: Address);
+    fn update_admin(
+        e: Env,
+        new_admin: Address,
+        approvals: Vec<Address>,
+    ) -> Result<(), UpgradeError>;
 
     // Create upgrade proposal.
     fn propose_upgrade(
@@ -50,24 +57,36 @@ pub trait FactoryTrait {
     fn apply_upgrade(e: Env) -> Result<BytesN<32>, UpgradeError>;
 
     // Cancel active proposal.
-    fn cancel_proposal(e: Env) -> Result<(), UpgradeError>;
+    fn cancel_proposal(e: Env, approvals: Vec<Address>) -> Result<(), UpgradeError>;
 
     /// Add governance voter.
-    fn add_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
+    fn add_voter(e: Env, voter: Address, approvals: Vec<Address>) -> Result<(), UpgradeError>;
 
     /// Remove governance voter.
-    fn remove_voter(e: Env, voter: Address) -> Result<(), UpgradeError>;
+    fn remove_voter(e: Env, voter: Address, approvals: Vec<Address>) -> Result<(), UpgradeError>;
 
     /// Get current account wasm version.
     fn get_latest_account_wasm(e: Env) -> Result<BytesN<32>, UpgradeError>;
 
     ///Canonical proof-of-possession challenge salt
+    #[allow(clippy::too_many_arguments)]
     fn get_pop_challenge(
         e: Env,
+        passkey: Option<BytesN<65>>,
+        stellar_signer: Option<BytesN<32>>,
+        evm_signer: Option<BytesN<20>>,
+        bls_keys: Vec<BytesN<96>>,
         nonce: BytesN<32>,
         network: Symbol,
+        guardians: Vec<Address>,
         live_until_ledger: u32,
     ) -> Result<BytesN<32>, AccountError>;
+
+    /// Returns whether this Factory canonically deployed the account.
+    fn is_registered_account(e: Env, account: Address) -> bool;
+
+    /// Returns the network configured for this Factory deployment.
+    fn get_network(e: Env) -> Option<Symbol>;
 
     /// Get admin address.
     fn get_admin(e: Env) -> Option<Address>;

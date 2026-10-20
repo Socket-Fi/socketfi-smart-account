@@ -13,6 +13,8 @@ publish = false
 soroban-sdk = "=25.3.1"
 k256 = { version = "=0.13.4", default-features = false, features = ["ecdsa"] }
 p256 = { version = "=0.13.2", default-features = false, features = ["ecdsa"] }
+ed25519-dalek = { version = "=2.2.0", default-features = false }
+stellar-strkey = { version = "=0.0.16", default-features = false }
 
 [profile.release]
 opt-level = "z"

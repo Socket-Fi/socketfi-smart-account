@@ -100,4 +100,20 @@ pub enum AccountError {
     SessionUnauthorized = 816,
     SessionLimitExceeded = 817,
     ArithmeticOverflow = 818,
+
+    // ============================================================
+    // Multi-binding owner management
+    // ============================================================
+    BindingAlreadyExists = 819,
+    BindingNotFound = 820,
+    LastBindingRemoval = 821,
+    BindingTypeMismatch = 822,
+    InvalidApprovalSet = 823,
+    DuplicateApproval = 824,
+    InsufficientBindingApprovals = 825,
+    PeerRecoveryUnavailable = 826,
+    InvalidAuthWindow = 827,
+    RecoveryKeyNotFound = 828,
+    NetworkMismatch = 829,
+    AccountNotRegistered = 830,
 }

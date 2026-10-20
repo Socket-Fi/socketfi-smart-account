@@ -21,13 +21,13 @@ pub struct PasskeySignature {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StellarSignature {
     pub signature: BytesN<64>,
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvmSignature {
     pub signature: BytesN<64>,
     pub recovery_id: u32,
@@ -52,6 +52,7 @@ pub struct PasskeyAccountSigner {
 pub struct StellarAccountSigner {
     pub public_key: BytesN<32>,
     pub address: Address,
+    pub pop_signature: StellarSignature,
 }
 
 #[contracttype]
@@ -70,11 +71,42 @@ pub enum AccountSigner {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccountCommitment {
     Passkey(BytesN<65>),
     Stellar(BytesN<32>),
     Evm(BytesN<20>),
+}
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BindingType {
+    Passkey,
+    Stellar,
+    Evm,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub enum OwnerSignature {
+    Passkey(PasskeySignature),
+    Stellar(StellarSignature),
+    Evm(EvmSignature),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthBindings {
+    pub passkey: Option<BytesN<65>>,
+    pub stellar: Option<BytesN<32>>,
+    pub evm: Option<BytesN<20>>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BindingChangeResult {
+    pub auth_config_nonce: u64,
+    pub session_epoch: u64,
 }
 
 pub fn extract_bls_keys(e: &Env, bls_keys_pop: Vec<BlsKeyWithPoP>) -> Vec<BytesN<96>> {
