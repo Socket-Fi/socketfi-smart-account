@@ -17,6 +17,10 @@ pub const VOTING_THRESHOLD: u32 = 75;
 pub const MIN_GOVERNANCE_VOTERS: u32 = 3;
 pub const SESSION_VERSION: u32 = 1;
 pub const MAX_SESSION_LIFETIME_LEDGERS: u32 = 1_555_200; // ~90 days at 5s/ledger
+/// Refresh durable state only when less than ~30 days remain.
+pub const TTL_REFRESH_THRESHOLD_LEDGERS: u32 = 30 * DAY_IN_LEDGERS;
+/// Keep durable state alive for ~90 days, matching the longest session policy.
+pub const TTL_TARGET_LEDGERS: u32 = MAX_SESSION_LIFETIME_LEDGERS;
 pub const MAX_PERMISSIONS: u32 = 16;
 pub const MAX_SPEND_LIMITS: u32 = 8;
 pub const MAX_CONTEXTS: u32 = 32;

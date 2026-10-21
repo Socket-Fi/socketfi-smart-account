@@ -1,6 +1,12 @@
 use soroban_sdk::{Env, IntoVal, Val};
 
-use crate::constants::DAY_IN_LEDGERS;
+use crate::constants::{TTL_REFRESH_THRESHOLD_LEDGERS, TTL_TARGET_LEDGERS};
+
+fn bounded_ttl_window(max_ttl: u32) -> (u32, u32) {
+    let target = TTL_TARGET_LEDGERS.min(max_ttl);
+    let threshold = TTL_REFRESH_THRESHOLD_LEDGERS.min(target);
+    (threshold, target)
+}
 
 // -----------------------------------------------------------------------------
 // Instance TTL
@@ -9,8 +15,9 @@ use crate::constants::DAY_IN_LEDGERS;
 /// Extends TTL for the contract's instance storage.
 ///
 /// DESIGN:
-/// - Refreshes instance storage TTL close to the maximum allowed by the network.
-/// - Uses `DAY_IN_SECONDS` as a safety buffer to avoid extending at the exact edge.
+/// - Refreshes instance storage to the longest supported session lifetime.
+/// - Refreshes only when the remaining TTL is below the configured threshold.
+/// - Caps both values to the active network's maximum TTL.
 ///
 /// IMPORTANT:
 /// - This affects INSTANCE storage only.
@@ -22,15 +29,13 @@ use crate::constants::DAY_IN_LEDGERS;
 ///
 /// AUDIT NOTE:
 /// - TTL extension depends on interaction with the contract.
-/// - If the contract is idle for too long, instance state may still expire.
+/// - If the contract is idle beyond the target window, instance state may archive.
 ///
 /// COST NOTE:
 /// - Bumping TTL adds cost, so it should be used intentionally on important paths.
 pub fn bump_instance(e: &Env) {
-    let max_ttl = e.storage().max_ttl();
-
-    let threshold = max_ttl.saturating_sub(DAY_IN_LEDGERS);
-    e.storage().instance().extend_ttl(threshold, max_ttl);
+    let (threshold, target) = bounded_ttl_window(e.storage().max_ttl());
+    e.storage().instance().extend_ttl(threshold, target);
 }
 
 // -----------------------------------------------------------------------------
@@ -41,7 +46,7 @@ pub fn bump_instance(e: &Env) {
 ///
 /// DESIGN:
 /// - Intended for long-lived keys such as mappings, registries, and user-linked state.
-/// - Extends the TTL of a specific persistent key close to network max TTL.
+/// - Extends the TTL of a specific persistent key to the bounded target window.
 ///
 /// IMPORTANT:
 /// - This affects only the provided persistent key.
@@ -63,8 +68,25 @@ pub fn bump_persistent<K>(e: &Env, key: &K)
 where
     K: IntoVal<Env, Val>,
 {
-    let max_ttl = e.storage().max_ttl();
+    let (threshold, target) = bounded_ttl_window(e.storage().max_ttl());
+    e.storage().persistent().extend_ttl(key, threshold, target);
+}
 
-    let threshold = max_ttl.saturating_sub(DAY_IN_LEDGERS);
-    e.storage().persistent().extend_ttl(key, threshold, max_ttl);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ttl_window_uses_bounded_policy_on_long_lived_networks() {
+        assert_eq!(
+            bounded_ttl_window(TTL_TARGET_LEDGERS.saturating_mul(2)),
+            (TTL_REFRESH_THRESHOLD_LEDGERS, TTL_TARGET_LEDGERS)
+        );
+    }
+
+    #[test]
+    fn ttl_window_caps_policy_to_network_maximum() {
+        let network_max = TTL_REFRESH_THRESHOLD_LEDGERS / 2;
+        assert_eq!(bounded_ttl_window(network_max), (network_max, network_max));
+    }
 }
